@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Steam 市场侦察兵 · SteamScout</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="logo">🎯</div>
+      <div>
+        <h1>Steam 市场侦察兵</h1>
+        <p>SteamScout · 立项参谋</p>
+      </div>
+    </div>
+    <div id="status-card" class="card">
+      <div class="row"><span class="dot" id="llm-dot"></span><span id="llm-status">检测中…</span></div>
+      <div class="row hidden" id="llm-config-row"><button class="mini-export" id="btn-llm-config">⚙️ 配置 LLM API</button></div>
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat"><b id="st-insights">-</b><span>知识洞察</span></div>
+        <div class="stat"><b id="st-sources">-</b><span>原始来源</span></div>
+        <div class="stat"><b id="st-projects">-</b><span>评估项目</span></div>
+        <div class="stat"><b id="st-evals">-</b><span>评估记录</span></div>
+      </div>
+      <div class="row tiny" id="st-digest">上次复盘：-</div>
+    </div>
+    <div class="card" id="sessions-card">
+      <h3>对话</h3>
+      <button class="btn" id="btn-new"><span class="icon">+</span><span>新建对话</span></button>
+      <div id="sessions-list" class="tiny"></div>
+    </div>
+    <div class="card">
+      <h3>快捷功能（按步骤）</h3>
+      <div class="tiny muted">点击填入输入框，改掉 XXX 再发送</div>
+      <div class="step-label">① 立项评估 · 调研项目</div>
+      <button class="chip fn" data-q="评估立项：《XXX》2D 肉鸽卡牌，2人团队，计划12个月上线——值不值得做？" data-select="XXX">📊 评估我的项目</button>
+      <div class="step-label">② 看结论 · 深挖竞品</div>
+      <button class="chip fn" data-q="输出项目「XXXXXX」的评估结论" data-select="XXXXXX">📌 输出项目评估结论</button>
+      <button class="chip fn" data-q="分析「XXXXXX」品类当前的市场趋势、竞争格局与进入机会" data-select="XXXXXX">🔍 深挖品类与竞品</button>
+      <div class="step-label">③ 导出报告</div>
+      <button class="chip fn" data-q="导出项目「XXXXXX」的最近一次评估报告" data-select="XXXXXX">⤓ 导出报告 PDF</button>
+      <div class="divider-label">示例提问</div>
+      <button class="chip" data-q="2026 年哪些 Steam 品类处于上升期？适合小团队进场？">📈 哪些品类在上升期？</button>
+      <button class="chip" data-q="幸存者like 现在还能进场吗？做多久上线比较合适？">⚔️ 幸存者like 还能做吗？</button>
+      <button class="chip" data-q="为什么《Friendslop》2天卖100万又快速降温？小团队能学到什么？">🐟 Friendslop 案例复盘</button>
+    </div>
+    <div class="card">
+      <h3>操作</h3>
+      <button class="btn" id="btn-guide"><span class="icon">📖</span><span>使用指南</span></button>
+      <button class="btn" id="btn-inventory"><span class="icon">📊</span><span>数据盘点</span></button>
+      <button class="btn" id="btn-digest"><span class="icon">🔄</span><span>立即市场复盘</span></button>
+    </div>
+    <div class="card" id="projects-card">
+      <h3>项目档案</h3>
+      <div class="tiny muted">点击项目查看对应评估对话</div>
+      <div id="projects-list" class="tiny"></div>
+    </div>
+    <footer class="tiny">
+      数据源：B站 UP 主 <a href="https://space.bilibili.com/3546782527130177" target="_blank">Gaby学姐说</a> 54 期视频 · Steam 商店实时数据<br>本机运行 · 数据存于本地 SQLite
+    </footer>
+  </aside>
+
+  <main id="chat">
+    <div id="messages"></div>
+    <div id="composer">
+      <textarea id="input" rows="1" placeholder="描述你的游戏立项想法，或问任何 Steam 市场问题…（Enter 发送，Shift+Enter 换行）"></textarea>
+      <button id="send" title="发送">➤</button>
+    </div>
+    <div class="tiny hint">评估模式：消息包含「立项/评估/值不值得做/要多久/还能进场吗」自动触发调研与评分报告（全程进度条+计时，报告先行、专家解读随后，约 30-90 秒）。生成期间可继续在输入框准备下一条，完成后发送。不确定怎么用？点侧栏「📖 使用指南」。</div>
+  </main>
+
+  <!-- LLM 配置弹窗 -->
+  <div id="cfg-mask" class="mask hidden">
+    <div class="guide-modal" style="max-width:600px">
+      <div class="guide-head">
+        <h2>⚙️ 配置 LLM API</h2>
+        <button id="cfg-close" class="mini-del guide-x" title="关闭">✕</button>
+      </div>
+      <div class="guide-body">
+        <p class="tiny">本工具只需一个 <b>OpenAI 兼容</b>的大模型 API 即可使用（Steam / SteamCharts / B 站 / 搜索都是公开接口，<b>无需任何其他 Key</b>）。配置会写入项目根目录的 <code>.env</code>，只保存在本机。</p>
+        <label class="field"><span>API Key</span><input id="cfg-key" type="password" placeholder="sk-…（留空 = 保持已保存的 Key 不变）" autocomplete="off"></label>
+        <label class="field"><span>服务地址 Base URL</span><input id="cfg-base" placeholder="https://api.deepseek.com"></label>
+        <label class="field"><span>模型名</span><input id="cfg-model" placeholder="deepseek-chat / deepseek-flash / gpt-4o-mini …"></label>
+        <div class="row" style="gap:8px;margin-top:12px">
+          <button class="btn" id="cfg-save" style="width:auto;padding:8px 18px">保存并测试</button>
+          <button class="btn ghost" id="cfg-cancel" style="width:auto;padding:8px 18px">取消</button>
+        </div>
+        <div id="cfg-result" class="tiny" style="margin-top:10px"></div>
+        <p class="tiny" style="margin-top:12px">常见配置：<br>
+          • DeepSeek → <code>https://api.deepseek.com</code>，模型 <code>deepseek-chat</code> 或 <code>deepseek-flash</code>（platform.deepseek.com 注册）<br>
+          • 其他厂商（OpenAI / 智谱 / 通义 / Kimi / SiliconFlow）→ 填各自的 OpenAI 兼容地址与模型名<br>
+          • 本地 Ollama → <code>http://127.0.0.1:11434/v1</code>，模型如 <code>qwen2.5:7b</code>（无需 Key，随便填 non-empty）</p>
+      </div>
+    </div>
+  </div>
+  <!-- 数据盘点弹窗 -->  <div id="inv-mask" class="mask hidden">
+    <div class="guide-modal">
+      <div class="guide-head">
+        <h2>📊 数据盘点</h2>
+        <button id="inv-close" class="mini-del guide-x" title="关闭">✕</button>
+      </div>
+      <div class="guide-body" id="inv-body">加载中…</div>
+    </div>
+  </div>
+  <!-- 使用指南弹窗 -->
+  <div id="guide-mask" class="mask hidden">
+    <div class="guide-modal">
+      <div class="guide-head">
+        <h2>📖 使用指南</h2>
+        <button id="guide-close" class="mini-del guide-x" title="关闭">✕</button>
+      </div>
+      <div class="guide-body">
+        <h3>① 三步上手</h3>
+        <table>
+          <tr><td>① 立项评估</td><td>侧栏「📊 评估我的项目」→ 改掉 XXX 里的项目信息发送 → 自动调研 Steam 数据并出评分报告</td></tr>
+          <tr><td>② 看结论 / 深挖</td><td>「📌 输出项目评估结论」读档案（不重跑评估）；「🔍 深挖品类与竞品」继续调研</td></tr>
+          <tr><td>③ 导出报告</td><td>「⤓ 导出报告 PDF」→ 浏览器打印窗口选「另存为 PDF」</td></tr>
+        </table>
+        <h3>② 怎么开始</h3>
+        <ul>
+          <li><b>立项评估</b>：直接描述你的游戏想法，句中带「立项 / 评估 / 值不值得做 / 多久能上线 / 还能进场吗」→ 自动采集 Steam 实时数据并出评分报告</li>
+          <li><b>市场问题</b>：直接问，如「2026 年哪些品类在上升期？」→ 联网调研 + 本地知识库回答</li>
+          <li><b>看历史结论</b>：侧栏「快捷功能 ② → 📌 输出项目评估结论」，改掉 XXXXXX 后发送</li>
+        </ul>
+        <h3>③ 等待时你会看到</h3>
+        <ul>
+          <li><b>进度条 + 计时</b>：立项评估共 4 步，顶部横幅显示第几步、百分比与已用秒数</li>
+          <li><b>滚动话术</b>：每 6 秒更新一句"当前在做什么"</li>
+          <li><b>💭 思考过程</b>：推理模型的思考实时可见（可点击折叠）</li>
+          <li><b>🔧 工具标签</b>：每次联网查询一条（Steam / B站 / 搜索 / 知识库），悬停可看结果摘要</li>
+        </ul>
+        <h3>④ 回答完成后</h3>
+        <ul>
+          <li>回答下方出现<b>建议按钮</b>（输出项目结论 / 深挖竞品 / 导出 PDF），点击即继续；<b>关掉页面再回来按钮仍在</b></li>
+          <li><b>项目档案</b>：点击项目 → 跳转对应评估对话；行内 <code>📌 结论</code> / <code>⤓ PDF</code> / <code>✕ 删除</code></li>
+          <li><b>多对话</b>：不同项目建议分开聊，「对话」区可新建 / 切换 / 删除</li>
+        </ul>
+        <h3>⑤ 遇到问题</h3>
+        <table>
+          <tr><td>页面打不开</td><td>双击 <code>start.bat</code>（会自动清理端口占用）</td></tr>
+          <tr><td>打开后是别的界面</td><td>端口被其他程序占用：改 <code>.env</code> 的 <code>PORT</code> 后重启</td></tr>
+          <tr><td>中文显示乱码</td><td><b>Ctrl+F5 强制刷新</b>；并确认访问的是本工具（<code>/api/health</code> 返回 <code>{"ok":true,"llm":true}</code>）</td></tr>
+          <tr><td>一直"正在调研"</td><td>Steam / B站限流，等 30~60 秒重试；工具标签会显示失败原因</td></tr>
+          <tr><td>想换模型</td><td>改 <code>.env</code> 的 <code>LLM_BASE_URL</code> / <code>LLM_MODEL</code></td></tr>
+        </table>
+        <p class="tiny">生成期间可以继续在输入框打草稿（不会丢），发送会提示等待完成。完整流程文档见项目内 <code>docs/交互流程.md</code>，Agent 规格见 <code>SKILL.md</code>。</p>
+      </div>
+    </div>
+  </div>
+<script src="app.js"></script>
+</body>
+</html>

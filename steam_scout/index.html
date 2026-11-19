@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steam 市场侦察兵 · 单文件版</title>
+<style>
+:root{--bg:#0f1218;--bg2:#161b26;--bg3:#1d2433;--border:#2a3348;--text:#dde3ee;--muted:#8b94a7;--accent:#4c8dff;--accent2:#38d996;--warn:#f0b429;--danger:#ef5f6b}
+*{box-sizing:border-box;margin:0;padding:0}html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;font-size:15px;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px;background:var(--bg2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.brand{font-size:17px}.brand .sub{color:var(--muted);font-size:12px;margin-left:6px}
+.badges{display:flex;gap:8px;align-items:center}
+.badge{font-size:12px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:var(--muted);cursor:default}
+.badge.ok{color:var(--accent2);border-color:#2f6b52}.badge.warn{color:var(--warn);border-color:#6b5a2a}.badge.bad{color:var(--danger);border-color:#6b3038;cursor:pointer}
+main{flex:1;display:flex;flex-direction:column;min-height:0;max-width:1080px;width:100%;margin:0 auto;padding:0 16px}
+.note{font-size:12px;color:var(--muted);padding:8px 4px 0}
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:10px 0}
+.panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.panel-head button{background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer}
+.hint-txt{font-size:12px;color:var(--muted);line-height:1.6}
+.panel label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+.panel input{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;font-family:inherit}
+.panel input:focus{border-color:var(--accent)}
+.row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.row button{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer}
+.row button.ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
+#kb-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 4px;flex-wrap:wrap}
+#kb-stats{font-size:12px;color:var(--muted)}
+.mini{background:var(--bg3);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer}
+.mini:hover{color:var(--accent);border-color:var(--accent)}
+#kb-box{max-height:200px;overflow-y:auto;margin:0 0 8px}
+.kb-item{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;margin:4px 0;font-size:12.5px;color:var(--text);line-height:1.6}
+.kb-cat{color:var(--accent2);font-size:11px;margin-right:6px}
+#messages{flex:1;overflow-y:auto;padding:14px 4px;display:flex;flex-direction:column;gap:14px}
+.msg{display:flex}.msg.user{justify-content:flex-end}
+.bubble{background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 16px;max-width:92%;line-height:1.7;word-break:break-word}
+.msg.user .bubble{background:#24344f;border-color:#33476b;max-width:80%}
+.bubble h1{font-size:19px;border-bottom:1px solid var(--border);padding-bottom:6px;margin:12px 0 8px}
+.bubble h2{font-size:16px;margin:14px 0 8px}.bubble h3{font-size:14px;margin:12px 0 6px}
+.bubble p{margin:6px 0}.bubble ul,.bubble ol{margin:6px 0 6px 20px}
+.bubble table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
+.bubble th,.bubble td{border:1px solid var(--border);padding:6px 9px;text-align:left}.bubble th{background:var(--bg2)}
+.bubble code{background:var(--bg2);border-radius:4px;padding:1px 5px;font-family:Consolas,monospace;font-size:13px}
+.bubble pre{background:#0a0d13;border:1px solid var(--border);border-radius:8px;padding:10px;overflow-x:auto;margin:8px 0}
+.bubble blockquote{border-left:3px solid var(--accent);background:var(--bg2);padding:6px 12px;margin:8px 0;color:var(--muted)}
+.bubble hr{border:none;border-top:1px solid var(--border);margin:10px 0}
+.statusline{font-size:12.5px;color:var(--muted);padding:4px 2px 0}
+.pulse{animation:pulse-op 1.2s ease-in-out infinite}
+@keyframes pulse-op{0%,100%{opacity:.45}50%{opacity:1}}
+.err{color:var(--danger)}
+#chips{display:flex;gap:8px;flex-wrap:wrap;padding:6px 0}
+.chip{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:16px;padding:6px 12px;font-size:12.5px;cursor:pointer}
+.chip:hover{border-color:var(--accent)}
+#composer{display:flex;gap:10px;align-items:flex-end;padding:10px 0 16px}
+#input{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:12px;padding:11px 14px;font-size:14px;font-family:inherit;resize:none;max-height:160px;outline:none}
+#input:focus{border-color:var(--accent)}
+#send{width:46px;height:46px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-size:18px;cursor:pointer}
+#send:disabled{opacity:.5;cursor:not-allowed}
+.hidden{display:none}
+#toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#1d2a44;border:1px solid var(--accent);color:#d9e8ff;padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">🎯 <b>Steam 市场侦察兵</b><span class="sub">单文件版 · 双击即用 · 无需安装</span></div>
+  <div class="badges">
+    <span id="mode-badge" class="badge warn">…</span>
+    <span id="llm-badge" class="badge bad">…</span>
+  </div>
+</header>
+<main>
+  <div id="server-note" class="note"></div>
+  <div id="cfg-panel" class="panel hidden">
+    <div class="panel-head"><b>⚙️ 配置 LLM API</b><button id="cfg-close">✕</button></div>
+    <p class="hint-txt">只需填一个 <b>OpenAI 兼容</b>的大模型 Key（推荐 DeepSeek，注册即有额度）。Key 只保存在本机浏览器 localStorage，不会上传；Steam/B站/搜索均无需任何 Key。</p>
+    <label>API Key<input id="cfg-key" type="password" placeholder="sk-…" autocomplete="off"></label>
+    <label>服务地址 Base URL<input id="cfg-base" placeholder="https://api.deepseek.com"></label>
+    <label>模型名<input id="cfg-model" placeholder="deepseek-chat / deepseek-flash / gpt-4o-mini"></label>
+    <div class="row"><button id="cfg-save">保存</button><button id="cfg-test" class="ghost">保存并测试</button></div>
+    <div id="cfg-result" class="hint-txt" style="margin-top:8px"></div>
+  </div>
+  <div id="kb-bar">
+    <span id="kb-stats"></span>
+    <button id="btn-kb" class="mini">🔍 搜本地知识库</button>
+  </div>
+  <div id="kb-box" class="hidden"></div>
+  <div id="messages"></div>
+  <div id="chips">
+    <button class="chip" data-q="评估立项：《XXX》2D 肉鸽卡牌，2人团队，计划12个月上线——值不值得做？">① 📊 评估我的项目</button>
+    <button class="chip" data-q="2026 年哪些 Steam 品类处于上升期？适合小团队进场？">📈 哪些品类在上升期？</button>
+    <button class="chip" data-q="幸存者like 现在还能进场吗？做多久上线比较合适？">⚔️ 幸存者like 还能做吗？</button>
+    <button class="chip" data-q="为什么《Friendslop》2天卖100万又快速降温？小团队能学到什么？">🐟 Friendslop 案例复盘</button>
+  </div>
+  <div id="composer">
+    <textarea id="input" rows="1" placeholder="描述你的游戏立项想法，或问任何 Steam 市场问题…（Enter 发送，Shift+Enter 换行）"></textarea>
+    <button id="send">➤</button>
+  </div>
+</main>
+<div id="toast"></div>
+<script>window.SEED_KB = [{"content":"【2天卖100万的钓鱼游戏｜Friendslop怎么火、怎么凉、小团队怎么抄】两个瑞典人做的钓鱼游戏《How to Fish》（国区名《渔力全开》），8月20日上Steam，8月22日官宣100万份，同时在线峰值37.4万，好评率94%。\n\n上期《超级变色龙》是零宣发裸发，这期正好相反：立项就每周发短视频、攒Discord、路演找到Landfall（PEAK开发商）投资、4.95美元+4人开黑。\n\n本期五个部分：\n01 它是个啥：把「等鱼上钩」变成物理闹剧\n02 数据怎么看：五层框架，实时在线/销量/直播/破圈/社区\n03 玩家评价：94%好评，技术问题在哪\n04 怎么火的：四个阶","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1X14C6yENE"},{"content":"【单人主创带队、零宣发，16 天狂卖 1000 万份！超级变色龙爆火逻辑拆解】大家好，这期游戏介绍：单人主创带队、零广告投放的派对新游《超级变色龙》！\n上线 16 天销量突破 1000 万份，Steam 峰值 34 万人同时在线，Twitch 千万小时观看、全球主播自发开播。 \n独创涂色拟态躲猫猫玩法，随便玩都能产出爆款短视频切片。\n但火爆背后口碑两极，82.5% 特别好评，国服却大量吐槽服务器、外挂问题。 \n本期完整拆解它的爆火路径、直播裂变逻辑，以及所有独立开发者可以吸取的经验。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1Jq7H6uEGq"},{"content":"【1 个人、20 天、8000 块宣发、净赚9w：最适合独立游戏开发者研究的案例！《玩具店大整理》怎么做到首周 5000 份+】这期拆一个对个人开发者真正有参考价值的案例：《玩具店大整理》，开发者Shiftmoon一个人、20天开发、8000块宣发预算，8月7日上线Steam首日卖出1832份，五天总销量破5000份，净营收约10万人民币。\n\n和之前拆的Schedule One、PEAK、超级变色龙不同，这期通过完整后台数据——Steam后台、X广告后台、YouTube推广后台、小黑盒执行明细、主播建联记录，每一个动作都能照着做。\n\n我是GABY学姐，想做独立游戏的可以评论区或私信一起聊，社群和资料包都有。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV11vbC6uEVh"},{"content":"【从2万愿望单到450万销量，《PEAK》颠覆认知：揭秘让玩家疯狂买单的“观看式”游戏设计！】一款上线前几乎无人知晓的“组队爬山”游戏，怎么就突然卖了450万份，在线人数干到17万？\n\n今天的游戏市场，一个残酷的问题摆在所有开发者面前：“看起来好玩”和“真的好玩”，哪个才是引爆销量的关键？\n\n本期视频，我们就以《PEAK》为例子，从它“为观众而生”的滑稽物理引擎、趣味失败循环和近距离语音，深度解剖这款“主播友好型”游戏的设计内核。\n串联《幻兽帕鲁》和《Schedule 1》的现象级成功，试图总结出一套面向内容传播的游戏设计方法。\n\n如果你是独立游戏开发者，或者只是单纯好奇这些爆款游戏背后的流量密码","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1EKeHztEXV"},{"content":"【2026 年了，一个人做独立游戏到底还靠不靠谱？】起因是我那个独游群里最近很热闹，从\"用 Unity 还是 Godot\"到“独立游戏商业化”。 \n这期我用数据 + 案例把这件事讲清楚，包括： \n· 2025 Steam 新游 2% vs 98% 的极端分化\n · 独游圈的\"呼吸线 5 万份 / 斩杀线 500 份\"到底是什么 \n· 单人 9.56 亿的 Schedule I 是怎么做出来的（附 Tyler 完整运营时间线）\n · R.E.P.O. / PEAK / 卡带小子 / 苏丹的游戏多案例拆解\n · 首作幸存者偏差\n · 为什么第一款游戏大概率不会","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1ZMoFBKE11"},{"content":"【独立游戏上架Steam全流程：注册开发者+商店页，$100、四张表、三道审核】1、注册开发者 8 步（材料清单 → AppID）\n2、税务 W-8BEN：不勾协定扣 30%，勾了降到 10%\n3、注册段六个坑\n4、商店页 10 步：素材尺寸表（2024.8 起旧尺寸作废）\n5、胶囊红线 / 内容问卷与 AI 披露新口径\n6、过审 ≠ 上线：记得点\"发布为即将推出\"\n7、怎么算\"好\"：头两周破 150 / 四档基准\n8、 资料领取","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV198GG6WENp"},{"content":"【每年近2万款新游戏,一半卖不到100份——你的独立游戏点子,到底值不值得做?】每年近两万款新游戏涌上 Steam,近一半卖不到 100 份,新游戏收入中位数只有 249 美元。在动手做一两年之前,怎么先判断你的点子到底值不值得做?\n这期我用发行的视角,拆了三个真正跑出来的小团队——Schedule 1、PEAK、Gamble With Your Friends,看它们立项到底押对了什么;再给你一套动手前就能自查的「立项五问」,加两个零成本的市场测试方法。\n\n时间轴: \n00:00 为什么大家都在纠结立项\n00:50 三个小团队的立项巧思(Schedule 1 / PEAK / GW","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1L6Ex62EeH"},{"content":"【AI时代，一个人做游戏还能赚到钱吗？我研究了Steam、小游戏和3条现实路径】AI时代，一个人做独立游戏、做小游戏，到底还有没有机会？\n 这期视频我结合 Steam、国内小游戏市场、AI 提效案例，聊清楚三个问题：\n 一是机会到底在哪；\n 二是 AI 真正改变了什么、又解决不了什么；\n 三是普通人如果想开始，最现实的三条路应该怎么选。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1obwuz3EaR"},{"content":"【十年游戏人，我想说.......| 20份行业报告| 15位匿名访谈】你或许痴迷过《原神》的奇幻大陆，为《黑神话》的CG热血沸腾，甚至幻想过亲手打造下一个爆款游戏。但你是否知道，这个看似光鲜的行业背后，藏着怎样惊心动魄的生存法则？\n当全网热炒「游戏主程年薪百万」时，没人告诉你：某大厂项目组连续熬夜三个月，程序员突发心梗送医；当短视频吹嘘「AI画师工作效率翻5倍」时，不会提及头部公司正在批量清算35岁以上原画师。这，才是游戏行业未被美颜的真实面目。\n🎯 三大颠覆认知的行业真相\n🔍 你从未听过的圈内黑话\n💥 独家数据解读\n这不是贩卖焦虑，而是用20份行业报告、15位在职者匿名访","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1BEAGeFE3y"},{"content":"【9 个人，9 个月，首周 100 万套：凭这款\"赌博 + 友尽\"游戏首周净赚 4000 万】2026年5月1日，瑞典9人独立工作室 Tenstack 上线《Gamble With Your Friends》。 \n7 天，100 万套。\nSteam CCU 峰值 4.2 万，登顶全球 8 大主播榜单。\n xQc、Jerma985、ironmouse、alanzoka 集体被这款\"赌博 + 卖队友\"的游戏整破防。 \n\n 本期会用 8 分钟讲清楚： \n① 9 人小团队靠\"三件事\"做出爆款（选品 / 减法 / 定价）\n② 4 阶段传播链怎么从 5/1 烧到 5/12（主播自发 → 销量营销 → 二创裂变","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1SmGE6KEXv"},{"content":"【从EA失败到千万销量：《杀戮尖塔》究竟是如何打磨核心玩法的？】你的独立游戏，到底好不好玩？在投入所有心血之前，你是否也迫切想知道这个问题的答案？ \n\n本期视频，Gaby学姐将深入剖析现象级卡牌游戏《杀戮尖塔》(Slay the Spire) 的成功之路。\n这款游戏在初期营销几乎为零、首发两周仅卖出2200份的情况下，如何通过长达两年的“抢先体验”，最终逆袭斩获千万销量和97%的逆天好评？ \n\n本期内容完全基于其制作人在GDC的精彩分享，为你揭示《杀戮尖塔》打磨核心玩法的3大支柱：\n 🔥 1. 定性用户研究\n📊 2. 定量数据分析\n🧠 3. 核心团队的主观判断\n\n如果","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1rEY5zGEzk"},{"content":"【8 个法国人首周末卖 50 万套，《遥遥西土》是怎么火的？】《遥遥西土》上线 7 天 50 万销量、登顶 Steam 销量榜，8 个法国人怎么做到的？\n 今天不讲它好不好玩——讲一件比好不好玩更重要的事:它怎么火起来的。 \n\n5 个部分拆透: \n1️⃣ 这是个什么游戏？ \n2️⃣ 为啥上头？ \n3️⃣ 8 人团队怎么做出来的？ \n4️⃣ 怎么火起来的？(本期重点) \n5️⃣ 争议我怎么看？","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1GB5763ENz"},{"content":"【2个人，13个月，10万愿望单,首日卖了2.4万份|《放置之路》主创亲述】《放置之路》,2个人花13个月,不追热点,深耕一条没人抢的空缺赛道,零宣发攒下10.4万愿望单,首日卖出2.4万份。\n\n> 本期和主创聊6件事:\n> （1）先看结果:一年时间做出了什么\n> （2）立项:怎么找到\"有需求、没好产品\"的空缺(选品四步法)\n> （3）10万愿望单是怎么攒起来的:三个台阶,一条反常识\n> （4） 一组反常的Demo数据:85%启动率说明了什么\n> （5） 首发爆量之后:当核心向游戏遇到大众玩家\n> （6） 性价比排序:哪些可以直接抄作业","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1wX8y66EhR"},{"content":"【2026游戏公司最缺什么人？AI时代最吃香的4类岗位】2026年，游戏行业还值得进吗？\n一边是全球游戏行业持续裁员，部分传统岗位被AI快速替代；另一边，AI相关岗位却在高速增长，懂游戏又懂AI的复合型人才正在被市场争抢。\n这期视频我会讲清楚4件事：\n哪些游戏岗位正在缩减\n哪些新岗位正在崛起\n什么能力是AI暂时替代不了的\n现在准备入行游戏行业，应该怎么做\n适合观看人群：\n 游戏专业学生、校招生、转行者、游戏策划/美术/程序从业者、关注AI与游戏行业变化的人。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1YJNMzgETN"},{"content":"【如何快速了解一个行业？| 行业分析框架与数据获取技巧】在这个视频中，我将带你了解如何快速有效地掌握一个行业的核心要素。作为一名战略管理硕士并在大厂工作十多年，我积累了丰富的行业分析经验，今天将分享一些常用的行业分析框架和数据获取方法。\n视频分为三大部分：\n行业分析框架：如何通过PESTEL分析、行业生命周期、价值链分析等工具，全面了解一个行业的外部环境、竞争格局和关键参与者。\n行业分析数据：市场规模、增长趋势、竞争者数据、消费者行为等数据的类型和重要性。你将了解如何通过这些数据评估行业潜力。\n如何获取行业数据：从政府统计、行业报告到数据平台，我将推荐一些可靠","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1JPqpYFEmv"},{"content":"【游戏行业还能入吗？行业发展 | 薪资 | 职业发展 The Future of the Gaming Industry: Industry & Career G】2024年，全球游戏市场的规模预计将达到2000亿美元，而国内市场的竞争日趋激烈。今天，我们将从三个关键维度分析游戏行业的现状和未来：\n\n1、行业发展：我们将深入探讨游戏市场的年增长率、用户增长、收入变化，以及移动游戏和电竞行业的未来趋势。\n2、头部公司发展：腾讯、网易、拳头等巨头在市场中的地位、竞争格局及他们如何应对行业创新压力。\n3、从业者发展：薪资水平、职业发展空间以及如何在行业中保持竞争力，特别是对于年轻从业者而言。\n如果你正在考虑进入游戏行业，或者已经在行业内工作，这个视频将帮助你了解行业的真实","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1RKkbYSEmH"},{"content":"【2025年最强独立游戏〈Schedule One〉深度分析：市场表现、核心玩法、爆火原因、行业启示及独立游戏制作与发行思考 | 独立游戏发行洞察第①期】2025年，一款名为《Schedule One》的独立游戏横空出世，由单人开发者TVGS打造，却在Steam上创下销量登顶、45万玩家同时在线、预估营收2亿美金、98%压倒性好评的惊人纪录！这款游戏究竟有何魔力？\n本期视频将为您提供一份关于《Schedule One》的终极深度分析报告，从五个核心层面，全面拆解它的成功密码：\n市场表现：透过翔实的数据，看懂它惊人的商业爆发力。\n核心玩法：剖析其“模拟经营+动作冒险+黑色幽默”的成瘾性循环，以及超过千万种组合的“混合系统”如何让玩家欲罢不能。\n发行策略：堪称","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1v5uczNEdC"},{"content":"【一年 2 万款新游上 Steam，近一半评测不到 10 条：你的游戏如何被看到？Steam宣发全流程】2025 年 Steam 一年上架 21,299 款新游戏，今年到 9 月中旬已经 18,875 款，平均每天 70 多款。\n这么多游戏，独立游戏凭什么被玩家看到？又怎么把关注变成购买？\n\n这期不拆单个案例，把前两期《玩具店大整理》（1 人、20 天、首周 5000 份）和《放置之路》（2 人、0 元宣发、首 24 小时 2.4 万份）的真实后台放在一起，再对照 Valve 官方对曝光机制的说明，从立项到发售完整捋一遍：\n\n一、先理解 Steam：不卖推荐位，算法 + 人工精选，哪些指标其实不影响曝光\n二","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1JAeb6YEAV"},{"content":"【《明末》羽翼的陨落：首日“差评如潮”！口碑为何崩盘？| 明末 VS 黑悟空，什么才是口碑运营？】2025年7月24日，被誉为“村里第二个大学生”的国风魂类游戏《明末：渊虚之羽》在万众瞩目中登场。首小时在线人数破12万，预售额过亿，IGN打出8分高分，一切似乎都在预示着又一个国产游戏的辉煌。\n然而，风向在24小时内惊天逆转。Steam好评率断崖式暴跌，从“下一个黑神话”沦为“首个退学大学生”的辛辣调侃。这背后，究竟发生了什么？\n\n本期视频将深度剖析《明末》从万丈高楼到口碑崩塌的全过程。我们将探讨：\n① 期望的重负： 《明末》如何在《黑神话》的东风下，被推上神坛？\n② 发行的溃败： 发行商505 Gam","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1nhbNzBEVx"},{"content":"【一个游戏点子，值得你花一年去做吗？独立游戏立项的5个判断｜拆解《Bills Must Be Paid》】你手上有一个想做的游戏，玩法想好了，竞品也看过了，说不定原型都有了。下一步就是把一年时间投进去。投入之前，怎么知道值不值得？\n\n这期用一个真实案例把立项走一遍：《Bills Must Be Paid》，两个人做了七个月，砸存钱罐还账单，72 小时卖出 10 万份，20 天 33 万份。\n\n五个判断，每个都给出方法和数据：\n 第一判断 谁会买\n第二判断 为什么选你\n第三判断 你做得完吗\n第四判断 用什么证明\n第五判断 什么结果会让你改变决定\n\n\n数据来源：SteamDB、Steam 评测接口、How To ","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1RZa86oE7p"},{"content":"【2026 年 Steam 玩家在玩什么？2000 款高在线游戏拆解，小团队立项指南】这期把视角放大：2026 年 1—8 月，Steam 上 2000 款高同时在线峰值的游戏，逐款整理了品类、首发时间、四年同期在线和代表案例，看看能给独立开发者提供什么立项线索。\n\n 五个部分：\n 01 玩家在玩什么——品类权重、前十名单、峰值和持续活跃为什么要分开看\n02 老产品哪些在增长\n03 新品从哪里突围\n04 小团队优先验证什么——三个方向各自的条件与成本，三类需要额外证据的项目\n05 立项前怎么验证\n\n口径说明：PCU 是观察期内的最高同时在线，看爆发高度；持续活跃用同期月均；销量与收入需另查","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1yqYi6bEKK"},{"content":"【steam第③期：【用户心理】为什么你的游戏没人买？从“看到”到“付费”：Steam用户购买决策全拆解】本期【Steam发行指南 03】，我们钻进玩家的大脑，用硬核数据和行为心理学，拆解Steam用户的购买决策全链路：\n本期高能干货：\n 📌 打破刻板印象：Steam不再是英语的天下，简体中文用户已占据30%半壁江山！ \n📌 残酷的用户画像：80%是大学生？还是抓取那37%的“多金社畜”？你的游戏一开始就得选边站。 \n📌 类型锚定（Genre Anchoring）：为什么“创新”有时候是毒药？玩家其实是在找“熟悉的惊喜”。 \n📌 微观战场：胶囊图的生死权、鼠标悬停的秘密、以及截图排序的黄金法则。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1NcSiBAEuf"},{"content":"【独立游戏Steam愿望单全攻略：愿望单从0到1万怎么攒？Steam发售前最重要的一件事】2025年Steam上线了20282款新游戏，最后拿到1000+评测的只有608款，成功率3%。而在发售之前，最能提前预判你在哪一边的信号，就是愿望单。\n这期讨论\"愿望单如何从0攒起来\"：\n▸ 愿望单为什么值钱？\n ▸ 攒到多少算及格？\n ▸ 从0到1000怎么做？\n ▸ 从1000到1万怎么做？\n ▸ 哪些是瞎忙，为什么基本没用？\n数据来源：Chris Zukowski年度统计、GameDiscoverCo 2024–2025转化报告、VGI愿望单报告，案例含《Tiny Glade》《Word Play","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1huKP65E3G"},{"content":"【TapTap独立游戏发行终极指南：零分成+4400万MAU，如何复制《元气骑士》神话？】[🔍 报告完整文档库] https://developer.taptap.cn/docs/community/stages/  \n\n■ 本期深度解构：  \n✅ TapTap核心机制：为什么“零分成+不联运”让中小团队收入翻倍？（2024年平台营收13亿数据验证）  \n✅ 生死线预警：中国大陆版号/软著/ICP备案避坑指南\n✅ 爆款案例拆解：《元气骑士》如何用TapTap社区实现200万预约+5年长线运营？  \n✅ 开发者亲测：从账号认证→游戏上架→首页推荐的全流程SOP（含素材审核雷区清单）  \n\n■ 关","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1CZ76z2Edg"},{"content":"【万字拆解《逃离鸭科夫》：200万销量与30万在线，5人团队如何引爆全球？】《逃离鸭科夫》(Escape from Duckov) 无疑是2025年最大的惊喜。发售首周销量破100万，峰值在线超30万，Steam好评如潮 (96%+)——它刷新了国产独立游戏的记录。\n但它为什么能火？是因为“鸭子”的Meme梗，还是B站的强力推广？\n本期视频，我们将从商业数据、营销策略、游戏设计和开发历程四个角度，深度拆解这款现象级爆款。\n我们将探讨：\n为什么砍掉PVP，改成PVE，是它最天才的设计？\nB站作为发行商，如何利用“三位一体”的优势引爆流量？\n仅5人的Team Soda（碳酸小队）是如","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1VnyZBcEiE"},{"content":"【4228 款挤一周，中位数只有 806 个愿望单：Steam 新品节，独立游戏开发者可以怎么做?】这一届 Steam 新品节,4228 款 demo 挤在同一周,三年翻了近 5 倍。但真实数据来看:一个普通游戏一周净增愿望单的中位数只有 806 个,三分之二的项目都挤在最低两档。\n这期我用一手数据 + 这届真实榜单,把三件事:\n ① 新品节到底多重要、今年又有多难;\n ② 什么样才算\"做得好\"——四档标准,以及那个相关性高达 0.825 的预测指标;\n ③ 具体该怎么做——算法到底在看什么、四个必须要做的事情、一条能照着做的时间轴,还有几条规则红线。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV13ijt6gEue"},{"content":"【🔥【独立游戏发行必看】Steam 发行全攻略！附发行流程/愿望单  / 持续运营干货】本期视频深度解析Steam 独立游戏发行全流程，从平台底层逻辑到实战运营策略，手把手教你突破流量红海！\n\n核心内容速览：\n1、Steam 平台深度洞察（2025 最新数据）\n1.7 亿月活、4027 万同时在线用户，新游戏年增 33%，竞争激烈下如何让玩家 “看见你”？\n用户决策密码：评分、愿望单、KOL 推荐、促销折扣的底层影响机制。\n热门品类揭秘：恐怖 / 模拟 / 叙事游戏为何更容易突围？中美 7500 万 + 用户市场如何精准触达？\n\n2、从 0 到 1 发行实战指南\n上架准备：Steamwork","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1Fb5czWEmK"},{"content":"【独立游戏团队怎么做推广？买量、KOL、平台资源，哪条最适合小团队？】很多独立游戏团队做推广时，第一反应就是买量\n但问题是：现在 Google、Meta、TikTok、AppLovin、Unity 的获客成本越来越高，2 万块预算可能根本跑不出有效模型。\n这期视频，我会用 6 分钟讲清楚：\n1、游戏推广到底有哪几条路\n2、独立团队为什么不能只靠买量\n3、内容种草和平台官方资源该怎么用\n4、Google Play Games Level Up 是什么\n5、Level Up 对独立团队为什么值得关注\n6、还有哪些免费资源可以顺手用起来\n适合独立游戏开发者、小团队发行、出海游戏项","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1SDLz6vErw"},{"content":"【steam第②期：【算法黑盒】你的游戏为什么没人看？Steam流量底层逻辑全复盘】Part 1 核心逻辑： 为什么Steam没有任何付费推广渠道？\nPart 2 输入参数： 算法眼里的核心指标（销量 vs 标签）\nPart 3 流量池： 探索队列与“更多类似产品”是如何工作的？\nPart 4 官方辟谣： 愿望单、好评率与本地化的真实权重。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1QMUMBfEPZ"},{"content":"【扒了 3556 条大厂 JD，我整理了一份《2026 游戏行业劝退/劝进指南》】2026 年，游戏行业到底缺不缺人？ 为\n爬取并人肉分析了腾讯 IEG、网易游戏、米哈游三家头部大厂共计 3556 条官方招聘需求（JD）。\n看四个维度的问题：\n岗位结构表：大厂把钱到底投在了哪里？\n入行劝退/劝进表：程序/美术/策划/运营，你的能力在大厂眼里属于哪一档？\n城市策略表：广州、深圳、上海、杭州，选哪座城决定了你的天花板。\n90天行动清单：如何用三个月把自己伪装成“能交付”的人。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1Nh64BEEMc"},{"content":"【steam第④期 | 【发售前筹备】Steam愿望单=销量？从商店页优化→新品节爆发的《预热手册》】本期视频是《独立游戏发行实战》系列的第4期，直接拆解发售前预热的核心事项。从长达两年的Roadmap规划，到Steam商店页的“黄金1.5秒”，再到如何利用新品节（Next Fest）实现流量爆发。\n📅 24个月的生命线：从播种期到收割期，每个阶段必须做对哪些事？\n📈 愿望单的数学题：首周转化率与首年销量的法则。\n🛍️ 商店页优化：如何利用“黄金1.5秒”抓住玩家眼球？标签策略如何影响算法推荐？\n🔥 流量实战：B站/抖音的种草逻辑 vs Steam新品节的Demo策略。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1m7mwBvEUP"},{"content":"【20万字知识库硬核拆解！独立游戏全平台宣发Skills清单：竞品分析/发行节奏/Steam执行/短视频/KOL（附Schedule 1实操】Hello大家好，我是Gaby学姐！👋\n很多开发者呕心沥血做出了好玩的游戏，却在\"怎么卖出去\"这一步踩了无数坑。这期视频，我把过去十年的游戏发行经验做了彻底提纯，整理成一套可以直接落地的「独立游戏发行Skills清单」，覆盖从立项到长尾运营的完整宣发链路。\n无论你是刚入行的独立开发者，还是想系统补齐宣发短板的团队，这套体系都能帮你理清思路、少走弯路。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV11pSUBvE7B"},{"content":"【独立游戏发行｜要做对的4件事（上）：数据化市场洞察×用户获取引入】■ 本期解决开发者核心痛点：  \n✅ 市场扫描雷区：如何用PESTEL+SWOT双模型避开“伪蓝海”？\n✅竞品穿透术：构建四维分析矩阵（产品/运营/数据/用户），拆解差异化定位  \n✅ 玩家需求陷阱：3步验证核心需求真伪  \n✅ USP黄金公式 \n✅ 研发生死协同\n✅ 用户增长爆破术（预注册技巧×高转化素材×内容营销）\n\n■ 关键方法论工具：  \n▸ 用户画像动态迭代模型（从假设→验证→迭代）  \n▸ 竞品数据追踪清单（Sensor Tower/点点数据实操）  \n▸ USP价值主张画布    \n\n[🔍 ","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1MhMbzPEDX"},{"content":"【游戏运营新人必看： 职能全解析 | 稀缺的2类人才 | 4个基本认知 | Game Operations：What Do Publishers do?】本期视频深度解析游戏运营的核心职能与发行策略！\n1、游戏运营的“八爪鱼”职能：从发行制作人统筹全局，到数据分析、商业化设计、社区管理，拆解每个岗位如何联动影响游戏成败。\n2、《燕云十六声》发行策略全复盘：\n（1）从“中国首款3A武侠”到“国风开放世界RPG”的定位调整。\n（2）如何通过实机PV、国风元素、武术动作设计精准传递卖点？\n（3）数据揭秘：定位调整后的百度指数飙升200%，玩家口碑逆转！\n3、市场上最稀缺的运营人才\n4、必备四大基础认知：精准用户定位、产品差异化传递、商业化与留存平衡、持续迭代的“","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1fENSerEQQ"},{"content":"【扒了Steam Top 100数据：2025年，谁在亏本赚吆喝？谁在闷声发大财？玩家的真实品类偏好】2025年，Steam同时在线人数突破4120万，日均56款新游上架。 我花时间扒了2025年Steam Top 100的后台数据，清洗了上万条评论，横跨2023-2025三年维度，只为搞清楚一件事情： 到底是谁在亏本赚吆喝？又是谁，在没人注意的角落闷声发大财？","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1eFvYBNEGm"},{"content":"【当我们聊全球游戏发行，应该了解什么？】从底层逻辑拆解全球发行的核心框架，涵盖三大核心步骤：市场基础适配性分析、目标用户精准定位、本地化发行策略制定。\n结合 2025 年最新数据，深度解析全球 1877 亿美元市场规模下的区域差异（如美国 400 亿 + 收入市场、东南亚 4 亿 + 用户红利）、品类趋势（轻度休闲化加剧）及实战案例（Pokemon 卡牌全球破亿收入策略、Steam 中美用户决策差异）。\n无论是主机、PC 还是移动端，从市场规模到用户画像，从宣发渠道到本地化技巧，一站式掌握全球发行的底层逻辑与前沿玩法，助力产品精准触达目标市场，","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1CuLczFEbD"},{"content":"【9 月 TOP 独立游戏观察 &10 月新作前瞻｜三只猴子卖了 100 万，裁缝店收获 97.8% 好评】这期聊 9 月 Steam 上卖得最好的独立游戏，再看看 10 月有哪些新作值得等。\n\n9 月：三只猴子拆炸弹的《BOMBANANA!》前 10 天卖了 100 万份，做衣服的《Dressmaker》拿到 97.8% 好评，还有 Dimraeth、地城拓荒、Welcome to Elderfield、Wanderburg。\n10 月：越过山丘、Deep Dish Dungeon、Emberville、我们曾到此：明日遗踪、银松镇、Permafrost，发售日期和 Demo 评价都在视频里。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1PCan6jEuY"},{"content":"【Steam 新品节 Demo 上传全流程：3 个日期、3 步实操、5 周宣发】10 月 Steam 新品节 10 月 19 号开幕，但真正的 deadline 是 9 月 14 号。这期讲已经报上名的人，怎么在剩下几天把 Demo 传上去、传对，以及传完之后五周每周干什么。\n\n先看数据：今年 6 月新品节有 4382 个 Demo 参展，比去年多 66%，三年翻了五倍；2 月那届中位数游戏一周只拿到 200 个愿望单，前 10% 约 3000，前 1% 三万起步。窗口越来越大，也越来越挤。\n\n本期内容：\n01  三个日期：9.14 媒体预览线、9.28 最后期限、10.19 开幕\n","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV13wtm6sEiE"},{"content":"【0成本DIY独立游戏营销，如何获取大量愿望单？| 独立游戏发行 | 独立游戏开发者发行攻略】你是否也曾经：游戏上架Steam，发了几条推，然后就……没有然后了？😭\n这支视频就是为你准备的——\n从定位受众到撰写游戏核心信息，从搭建粉丝社群到每日一小时营销计划，\n我们用一张脑图，拆解游戏发售前后的全周期推广策略。\n适合所有独立游戏开发者、小型团队，或是刚起步的内容创作者。✨\n📌 本视频内容涵盖：\n✅ 如何精准定义你的游戏受众\n✅ 游戏核心信息的撰写模板\n✅ 粉丝社群搭建与维护原则\n✅ 每日一小时营销任务表\n✅ 发售后的持续推广与问题排查🎮","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1xkswzfEAU"},{"content":"【steam第①期：【宏观市场】4100万在线 vs 每天“阵亡”56款：Steam 2025残酷“大逃杀” | 独立游戏 Ep.1】2025年的Steam：4120万玩家同时在线，110亿美金的巨大市场...\n另一面，是每天56款新游戏上架，和不到5000美金的收入中位数。\n本期我将为你拆解Steam 2025年的宏观数据，揭示“希望”与“绝望”并存的真相。\n在这个视频里，你将知道：\nPCU、MAU、总收入的爆炸性增长，对我们开发者到底意味着什么？\n为什么说“新游戏的增长速度，已经远远超过了玩家的增长速度”？\n为什么“做个好游戏”在今天，仅仅是拿到了“参赛门票”？\n下期预告：【Steam的“算法”黑盒】—— 平台规则大揭秘，你的游戏到","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1AHCDBWE6p"},{"content":"【到底怎么才能进游戏行业？| 万字长文| 10年从业人员手把手教学】10年游戏人实操经验~\n附书籍、课程、垂媒社区推荐，小游戏大赛/game jam/UGC参赛建议，健康管理建议等。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1XvZBY1EA7"},{"content":"【一个人做了1年的物理破坏沙盒，终于发预告了！BonkLab-第一人称体素物理破坏沙盒】这是我一个人独立开发了一年的游戏——《BonkLab》。\n它是一款第一人称体素物理破坏沙盒：\n你可以射击、点燃、爆破、碾压实验体，也可以利用油桶、载具和各种物理道具，制造一场不断扩大的连锁灾难。\n游戏中的实验体可以被逐块破坏，火焰会自行蔓延，大量布娃娃能够同时碰撞、燃烧和飞向空中。\n这是《BonkLab》的第一支正式预告片。游戏目前已经上线 Steam 商店页，感兴趣的话欢迎加入愿望单，也非常想听听大家对游戏的建议。\n\nSteam 商店页搜索【BonkLab】添加愿望单\n\n你负责开火，物理负责失控。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1AMux6KE4o"},{"content":"【从夯到拉？ 2025 小团队独立游戏 年度盘点！！从丝之歌到香蕉神教，46万在线的背后是玩法的胜利还是概念的狂欢？】2025年，Steam 独立游戏的天花板被彻底掀翻了。 从 2023 年的《致命公司》24万在线，到 2025 年《空洞骑士：丝之歌》与《Schedule I》双双突破 45万大关，小团队不再只是 T2/T3 梯队的黑马，而是直接杀入 Top 10 与 3A 大作贴身肉搏。\n本期视频，我们将深度复盘 2025 年 Steam 独立游戏市场的“两极分化”与“概念为王”现象。我们以 Peak CCU（在线峰值）为硬指标，将今年的爆款分为 T0、T1、T2 三个梯队进行拆解。","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1sNiYBRE1s"},{"content":"【STEAM第5期【KOL引爆】：没钱买量，如何撬动主播和UP主帮你带货？】《Lethal Company》营销预算为0，却靠主播卖出千万份；《Balatro》靠打击感让头部主播尖叫。 \n📧 本期内容：\n为什么你的游戏没人播？（除了不好玩，可能是你找错了人）\n告别石沉大海：让主播无法拒绝的“3秒邮件”模板。\n产品设计：如何像《Balatro》一样把“梗”写进代码里？\n实战工具：去哪里挖出那些忠诚度极高的中腰部主播？","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV14ZmeBtE4Q"},{"content":"【游戏行业入行指南 | 行业现状 | 产业链分析| 职业角色 | 怎么入行🎮】👋 大家好，今天我们聊一聊：游戏行业入行指南。\n游戏行业，到底有多赚钱？2024年全球市场规模将超过2000亿美元。你是不是觉得入行就能拿高薪、做热门游戏？以前网上提到的100个月的年终奖是不是真的？\n你可能听说过“游戏研发”“游戏发行”这些概念，但整个游戏产业链是怎么运转的？你如果想加入游戏行业，你应该怎么找到自己的定位？\n我在游戏行业从业10年，负责过10款+游戏的发行与推广，今天带你看懂整个游戏产业链！\n🎯 核心问题：\n产业链：游戏从创意到用户的完整路径是什么？\n职位角色：行业里的各个角色具体做什么","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1yfqZYuERv"},{"content":"【游戏设计入门（1）：从创意到原型，如何打造一款成功的游戏？】在这期视频中，我们将深入探讨游戏设计的核心要素。\n从游戏的定义、分类，到如何创造游戏中的“乐趣”，再到设计一个令人上瘾的游戏体验，我们将逐一解析。\n如何通过明确的游戏规则、适度的挑战与奖励机制、以及丰富的玩家选择，来打造一个让玩家沉浸其中的世界。\n\n视频中还会详细讲解游戏创意的来源，包括如何从其他游戏、电影、历史、甚至自然界中汲取灵感。此外，我们还会讨论游戏创意如何在团队合作和头脑风暴中得到完善，以及如何通过原型开发来快速验证一个创意是否可行。\n\n最后，我们将分享如何将这些创意转化为实际的游戏原型，以确保","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1Jh6dYhEAM"},{"content":"【8 个品类 2614 款新游数据，三步看清一个赛道 | 上线一周只有 123 个愿望单，是宣传没做好 OR 立项有问题？】用 8 个 Steam 品类、2614 款近两年新游戏的数据，拆成三步来回答：\n① 玩家在买新游戏，还是守着老游戏（最近一年评测里老游戏占多少）\n② 新品做出来的有多少、是谁（千评新品 ÷ 样本数，再看名单）\n③ 进场的新品是不是越来越多（近 3 个月月均 ÷ 前 12 个月月均）\n\n数据说明：2026-09-30 批次，统计 2024-09-30 之后首发、评测 ≥10 条的付费新品；「新品」为宽口径，评测份额不等于玩家数或销售额；千评只是观察门槛，不代表盈利。\n\n上两期：《一年 2 万款新游上 Ste","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1mSp56yEHV"},{"content":"【我做了一个 Web 原生体素编辑器｜VoxelBean MVP 上线！！欢迎体验】VoxelBean 首个 MVP 版本正式发布 🎉\n这是一个完全基于 Web 技术构建的体素编辑器，目标是打造新一代 Web 原生创作工具——从建模、编辑到导出游戏资产，全流程在浏览器中完成。\n本次版本已经完整实现核心功能，包括：\n🧱 核心能力\nWebGPU 架构 + 实时 PBR 渲染\n绘制 / 擦除 / 填充 / 取色 全套编辑工具\n256 色调色板 + 材质属性管理\n📦 导入与导出\n支持 VOX / OBJ / GLTF 2.0\nGreedy Mesh 网格优化\n可自定义导出参数（比例 / Pivo","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV11WFUzcEPG"},{"content":"【Steam 新品节到底值不值得参加？2025 数据复盘 + 成功案例 + 2026 实战指南】本期视频用 2025 年三届 Steam 新品节的数据，拆解哪些游戏真正跑出来、哪些默默无闻，并重点分析《Half Sword》这个案例——它如何靠 Demo 设计、传播属性和节奏卡位，在新品节期间实现愿望单与关注度跃迁。\n你将看到：\n✔ Steam 新品节到底在推什么\n ✔ 2025 年新品节的三大现象\n ✔ 哪三类游戏最容易赢\n ✔ Half Sword 的 Demo 为什么天然适合传播\n ✔ 独立团队常见翻车点\n ✔ 新品节 SOP 作战流程\n ✔ Demo 与商店页优化 Checklist\n ✔ ","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1s4cFzZESp"},{"content":"【焦虑迷茫的时候看看...| 《斯坦福大学人生设计课》| 6大自测工具评论区领取】‼️领英数据显示中国超2亿职场人正在经历：\n→ 用跳槽解决本应重构的\"锚问题\"\n→ 在价值观冲突中持续内耗\n→ 误把娱乐缺失当工作能力问题\n\n斯坦福d.school研发的【人生设计仪表盘】已帮助全球370万用户：\n✅ 2周定位能量黑洞区域\n✅ 4周建立抗风险职业体系\n✅ 6个月实现工作满意度翻倍\n\n👇评论区获取：\n❶ 6大工具量表\n❷ 工作观/人生观冲突检测器\n❸ 心流时刻智能分析模块\n#职业规划 #自我提升 #人生设计","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1s2XZYGEFv"},{"content":"【独立游戏 发行 | 要做对的4件事情（下）：游戏生态构建与用户全周期运营指南】当游戏完成用户导入后，运营重心将转向深度留存、生态构建与价值转化。本指南系统化拆解游戏长线运营的核心支柱：\n1、用户粘性引擎\n分层留存策略：早期留存（D1-D7）聚焦核心玩法验证与目标激励，长期留存（D7+）依赖内容迭代、社交资产与经济系统平衡\n关键指标解读：D1（初体验质量）、D7（核心玩法认可）、D30（生态可持续性）\n同期群分析法精准评估策略有效性\n2、LiveOps 实时运营体系\n活动设计七原则：规律周期、节日联动、复用框架、数据驱动迭代\n版本更新三级节奏（大型资料片/中型版本/热修补丁）\n敏捷闭","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1uFgfz9ENG"},{"content":"【游戏设计入门（2）：游戏行业岗位介绍 | Full Game Design & Art Process: From Concept to Execution】在本视频中，我们详细讲解了游戏策划岗位的各个细分角色与职责，包括系统策划、关卡策划、数值策划、文案策划等核心工作。从《战神2018》中的实际案例出发，我们分析了每个策划岗位在设计过程中所扮演的关键角色及如何与其他团队协作，确保游戏体验的连贯性和深度。此外，我们还深入探讨了美术设计的环节，如何通过原画、3D建模、场景设计等手段将策划思路转化为游戏中的视觉效果，从而打造出震撼的游戏世界。\n\n通过实际案例和具体步骤，本视频为想了解游戏开发全过程的观众提供了清晰的指导，适合游戏爱好者、从业者及有志加入游戏行业的朋","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1HScaeXEHq"},{"content":"【4个精力管理+时间管理工具 | 每周工作60小时 | 每天健身1小时坚持10年 | 兼职UP|自我成长】真正的效率不是把自己变成机器人， 而是找到最省力的方式拿到结果。 \n试试这4个「偷懒却高效」的方法， \n你会发现：原来留出时间躺平， 才是持续高产出的终极秘密..","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1bUQxYoEWn"},{"content":"【《黑神话：悟空》，就是我的年度最佳游戏 | How Black Myth: Wukong Went from Failure to Triumph?】《黑神话：悟空》自2018年发布首支预告片以来，便吸引了全球玩家的关注。2024年，这款国产3A大作成功登顶TGA年度最佳动作游戏，并在短短半年内突破2000万销量，成为中国游戏行业的传奇之作。\n\n这段成功的背后，是冯骥和他的团队从2004年起，经历了无数的起伏与挑战。从早期的《斗战神》到“游戏科学”的成立，他们走过了从失败到成功的艰难路程。冯骥和他的团队坚定地走在自己选定的路上，凭借对游戏的热爱、对创作的执着和对时机的精准把握，最终创造出《黑神话：悟空》，让世界看到中国游戏的新高度。\n\n本视频将带你回顾","category":"UP主观点","tags":"立项方法论","url":"https://www.bilibili.com/video/BV1Ejc3eREm5"},{"content":"【市场复盘 2026-10-15 12:48:08】\nSteam 热销榜 Top5：使命召唤®：现代战争® 4、影之刃零、影之刃零、使命召唤®：现代战争® 4、Grand Theft Auto V 增强版；新品 10 款。\n- 热销: 使命召唤®：现代战争® 4\n- 热销: 影之刃零\n- 热销: 影之刃零\n- 热销: 使命召唤®：现代战争® 4\n- 热销: Grand Theft Auto V 增强版（-56%）","category":"复盘报告","tags":"市场复盘","url":""},{"content":"【市场复盘 2026-10-16 17:13:48】\nSteam 热销榜变动：1 款新进榜；新品榜 10 款；即将推出 10 款。\n- 热销: 使命召唤®：现代战争® 4\n- 热销: 影之刃零\n- 热销: EA SPORTS FC™ 27\n- 热销: 赛博朋克 2077（-70%）\n- 热销: Wallpaper Engine：壁纸引擎\n\nLLM 复盘要点：\n10月16日Steam热销榜仅1款新进，头部固化明显：COD MW4、FC27、赛博朋克2077（-70%）、Wallpaper Engine占据，说明3A年货、折扣老作与常青工具仍是流量黑洞；影之刃零入榜，是国产动作少见的热度信号。新品榜、即将推出各10款，供给密集，但热销新进仅1款，独立新品突围窗口很窄。\n\n对独立立项：避免正面撞车FPS/体育年货/开放世界；优先做低成本高辨识度、短循环强反馈、可长线运营或工具化产品。影之刃零验证了武侠/动作需求，但需控制规模，可转向类魂小品、横版动作或动作+肉鸽。赛博朋克大折说明玩家价格敏感，首发定价与折扣节奏要早规划。\n\n值得盯：国产武侠/动作、类幸存者/背包肉鸽、合作恐怖、模拟经营/自动化、低价个性化工具（壁纸/效率）。下一步重点看新品榜中哪些独立标签能转化为愿望单与首周热销。","category":"复盘报告","tags":"市场复盘","url":""},{"content":"【市场复盘 2026-10-16 17:27:28】\nSteam 热销榜变动：0 款新进榜；新品榜 10 款；即将推出 10 款。\n- 热销: 使命召唤®：现代战争® 4\n- 热销: 影之刃零\n- 热销: EA SPORTS FC™ 27\n- 热销: 赛博朋克 2077（-70%）\n- 热销: Wallpaper Engine：壁纸引擎\n\nLLM 复盘要点：\n本次热销榜0款新进，榜单高度固化：使命召唤、FC、影之刃零等大IP与高规格产品霸榜；赛博朋克2077靠-70%折扣回榜，Wallpaper Engine持续常驻。新品榜与即将推出各10款，供给不缺，但未转化为热销，说明曝光与转化门槛仍高。\n\n对独立游戏立项：避开3A年货与体育大作档期，首发硬冲热销不现实，应更重愿望单、Demo、社区运营与折扣长尾；差异化题材、低配置高复玩更易突围。\n\n值得盯：国产动作/武侠、模拟经营与Roguelike、工具/创意工坊型产品，以及承接折扣流量的中小体量RPG。Steam客服、蒸汽平台、Watt Toolkit等新闻露出，也提示中国渠道、网络工具与合规服务需求仍在。","category":"复盘报告","tags":"市场复盘","url":""},{"content":"【市场复盘 2026-10-19 14:21:16】\nSteam 热销榜变动：1 款新进榜；新品榜 10 款；即将推出 10 款。\n- 热销: 使命召唤®：现代战争® 4\n- 热销: 影之刃零\n- 热销: Wallpaper Engine：壁纸引擎（24h峰值 116313）\n- 热销: 赛博朋克 2077（-70%）\n- 热销: ForgeTax\n\nLLM 复盘要点：\n**10/19 Steam 复盘**\n\n**变化**：热销榜只有 1 款新进榜，结构没有变化：榜单头部由《使命召唤：现代战争 4》和《影之刃零》这类高预算、强宣发的动作产品占据；《赛博朋克 2077》以 -70% 的折扣长期留在榜单上，说明老牌 3A 正靠深度折扣占据中长尾需求；《Wallpaper Engine》24 小时峰值达到 116,313，再次印证“工具型、氛围型”产品具备近乎平台级的常驻粘性。新品榜和即将推出的产品各有 10 款，供给端并不少，但缺少能把现有榜单结构打乱的产品。新闻流中只有 Steam 官方页面类标题，没有有效信号，本期只依据榜单判断。\n\n**对独立立项的意义**：第一，价格空间正被两头挤压：头部 3A 以折扣价下探，常驻工具以极低单价抢占时长；独立产品若再挤进“中等体量动作”赛道，获客成本和制作成本会同时偏高。第二，榜单逻辑更看重“可演示的差异化”，高预算动作有画面优势，独立团队需要在机制、氛围或社交传播点上做到一眼可辨，而不该靠内容量取胜。第三，新品榜每周 10 款，曝光窗口短，立项时就该把 Demo、社区和发行节奏当作产品的一部分来设计。\n\n**值得盯的品类**：轻量工具与氛围类（桌面陪伴、挂机、生成器），因为长尾留存已被验证；中低成本的 Roguelite、模拟经营与“短局+可重复”的结构，因为符合折扣敏感期用户的决策习惯；带明确中国或东方美术标签的动作小体量作品，可借《影之刃零》抬升的关注度实现低成本导流，但要避开正面对比。","category":"复盘报告","tags":"市场复盘","url":""},{"content":"【市场复盘 2026-11-17 13:37:16】\nSteam 热销榜变动：4 款新进榜；新品榜 10 款；即将推出 10 款。\n- 热销: 影之刃零（24h峰值 279837）\n- 热销: 转运军团 - Slotbound（24h峰值 22526）（-10%）\n- 热销: 我带过的最差一届（-35%）\n- 热销: 天国：拯救2（-67%）\n- 热销: 深空当铺：可能是偷的\n\nLLM 复盘要点：\n**市场复盘要点（2026-11-17）**\n\n榜单呈“一头一尾”结构：影之刃零单款24h峰值近28万，几乎吸走全部注意力；虽有4款新进榜，腰部产品却明显缺乏承接。衰减端同样剧烈——天国：拯救2 -67%、我带过的最差一届 -35%。这意味着当前流量分配下，新品首周窗口极短，靠后续更新挽回的余地正在收窄。唯一逆势稳住的是 Slotbound（2.25万，仅-10%），说明“老虎机随机性+构筑成长”的混合配方即便被大作挤压，仍有独立生存位。\n\n对立项的含义有三点：主动错峰，避免与大作同日；把高辨识度机制放在题材之前，纯题材差异很难在榜上停留；首发即规划折扣与内容更新节奏，两周内拿不到二次曝光基本判死。\n\n值得关注的品类：赌博/老虎机机制+roguelike构筑；小店经营+叙事（深空当铺这类荒诞题材）；教师、职场等轻管理模拟。\n\n（新闻标题为平台常规引导页，无实质市场信号。）","category":"复盘报告","tags":"市场复盘","url":""},{"content":"2025年Steam月活1.7亿、同时在线4027万，新游戏年增33%；中美各7500万+用户，竞争加剧需精准触达。","category":"UP主观点","tags":"Steam平台数据,2025,用户规模,竞争态势","url":""},{"content":"Steam用户决策受评分、愿望单、KOL推荐、促销折扣影响；愿望单约19%转化率可用于预测销量。","category":"UP主观点","tags":"Steam愿望单,用户决策,销量预测,KOL","url":""},{"content":"Steam独立发行需Steamworks注册、100美元入场费、审核避坑、本地化/标签优化，并用Next Fest与Demo提升愿望单。","category":"UP主观点","tags":"Steam发行,Steamworks,NextFest,标签优化","url":""},{"content":"恐怖/模拟/叙事品类更易在Steam突围；《星露谷物语》《泰拉瑞亚》靠长期更新续命5年以上。","category":"UP主观点","tags":"Steam品类,长线运营,更新,DLC","url":""},{"content":"2025年《Schedule One》由单人TVGS开发，Steam销量登顶、45万同时在线、预估营收2亿美元、98%好评，Demo+EA关键。","category":"UP主观点","tags":"ScheduleOne,独立游戏,抢先体验,Demo策略","url":""},{"content":"《PEAK》上线前约2万愿望单，最终450万销量、17万同时在线；“为观众而生”设计利于主播传播。","category":"UP主观点","tags":"PEAK,观看式设计,主播传播,销量","url":""},{"content":"《明末》2025-07-24上线，首小时在线破12万、预售过亿、IGN 8分，但24小时内Steam差评崩盘；发行需管理预期。","category":"UP主观点","tags":"明末,口碑运营,发行失误,预期管理","url":""},{"content":"《杀戮尖塔》首发两周仅2200份，经两年EA达千万销量、97%好评；靠定性研究、定量数据和团队判断打磨。","category":"UP主观点","tags":"杀戮尖塔,EA,核心玩法,用户研究","url":""},{"content":"2025年Steam同时在线达4120万，市场约110亿美元；日均上架56款新游，收入中位数不足5000美元。","category":"UP主观点","tags":"Steam,宏观数据,2025","url":""},{"content":"《逃离鸭科夫》2025年销量200万、峰值在线超30万、首周破100万，好评96%+，团队仅5人。","category":"UP主观点","tags":"爆款案例,独立游戏,销量","url":""},{"content":"《逃离鸭科夫》砍PVP改PVE，B站发行以“三位一体”优势引爆流量，是成功关键。","category":"UP主观点","tags":"发行策略,PVE,B站","url":""},{"content":"2023《致命公司》24万在线；2025《丝之歌》《Schedule I》均破45万，小团队可进Steam Top10。","category":"UP主观点","tags":"独立游戏,在线峰值,趋势","url":""},{"content":"Steam简体中文用户约占30%，英语不再绝对主导；中文本地化对触达用户重要。","category":"UP主观点","tags":"用户画像,本地化,简体中文","url":""},{"content":"Steam无付费推广渠道，算法核心看销量与标签；探索队列、“更多类似产品”是主要流量池。","category":"UP主观点","tags":"Steam算法,流量逻辑,曝光","url":""},{"content":"发售前用24个月Roadmap规划；商店页需抓住“黄金1.5秒”；新品节Demo可引爆愿望单。","category":"UP主观点","tags":"发售筹备,愿望单,新品节","url":""},{"content":"《Lethal Company》营销预算0靠主播卖千万份；Balatro靠打击感/梗吸引主播，宜挖中腰部KOL。","category":"UP主观点","tags":"KOL,主播营销,独立游戏","url":""},{"content":"2025年Steam新游2% vs 98%极端分化；独游呼吸线5万份、斩杀线500份；首作幸存者偏差，产品70分运营30分。","category":"UP主观点","tags":"Steam市场,销量分布,独立游戏,运营","url":""},{"content":"Steam每年近2万款新游，近半销量不足100份，新游收入中位数249美元；立项五问与钩子图/假商店页可零成本验证。","category":"UP主观点","tags":"Steam数据,立项验证,市场测试,Gamalytic","url":""},{"content":"2025年Steam新品节三届数据复盘：Half Sword靠Demo设计、传播属性与节奏卡位实现愿望单跃迁，2026年2月需提前备战。","category":"UP主观点","tags":"Steam新品节,Demo,愿望单,发行节奏","url":""},{"content":"《Schedule I》单人收入9.56亿，附Tyler完整运营时间线；R.E.P.O./PEAK/卡带小子/苏丹的游戏等验证小团队爆款路径。","category":"UP主观点","tags":"Steam案例,小团队,运营时间线,爆款","url":""},{"content":"《遥遥西土》8人法国团队上线7天卖50万套并登顶Steam销量榜，小团队爆款依赖传播与发行设计。","category":"UP主观点","tags":"Steam案例,销量,传播,小团队","url":""},{"content":"2026-05-01《Gamble With Your Friends》9人9个月首周100万套，Steam CCU峰值4.2万，登顶8大主播榜。","category":"UP主观点","tags":"Steam爆款,主播传播,CCU,定价","url":""},{"content":"独立游戏推广不能只靠买量：Google/Meta/TikTok/AppLovin/Unity获客成本高，2万元预算难跑模型；应重视内容种草与平台官方资源。","category":"UP主观点","tags":"推广渠道,买量成本,平台资源,出海","url":""},{"content":"20万字知识库提炼独立游戏全平台宣发Skills：竞品分析、发行节奏、Steam执行、短视频、KOL，覆盖立项到长尾运营。","category":"UP主观点","tags":"发行方法论,Steam执行,KOL,短视频","url":""},{"content":"Steam新品节Demo三年增近5倍，2025届约4200款；普通项目中位周增愿望单200-806，前1%约3万。","category":"UP主观点","tags":"Steam,新品节,愿望单,独立游戏","url":""},{"content":"2025年Steam上线约2.03万款新游，仅608款达1000+评测，成功率约3%；近半游戏评测不足10条，愿望单是发售前关键预判信号。","category":"UP主观点","tags":"Steam,市场数据,成功率,愿望单","url":""},{"content":"Valve不卖推荐位，曝光依赖算法+人工精选；宣发应从立项开始，发售前攒300–1000创作者，发售时用愿望单通知和探索队列逐日测试。","category":"UP主观点","tags":"Steam,曝光机制,宣发,独立游戏","url":""},{"content":"Steam上架：注册开发者$100；W-8BEN勾协定税率10%，不勾30%；商店页素材2024.8起旧尺寸作废；过审后需点“发布为即将推出”。","category":"UP主观点","tags":"Steam,上架流程,税务,商店页","url":""},{"content":"新品节Deadline：10.19开幕，9.14媒体预览线、9.28最后期限；传完Demo后按五周节奏宣发。","category":"UP主观点","tags":"Steam,新品节,时间线,宣发","url":""},{"content":"Friendslop案例：超级变色龙零宣发16天1000万；How to Fish 2人2天100万、峰值37.4万；直播/短视频裂变强但易一波流。","category":"UP主观点","tags":"案例,Friendslop,直播裂变,独立游戏","url":""},{"content":"《放置之路》2人13个月零宣发攒10.4万愿望单，首日2.4万份；用选品四步法找“有需求、缺好产品”空缺，Demo启动率85%。","category":"UP主观点","tags":"案例,愿望单,选品,独立游戏","url":""},{"content":"《玩具店大整理》1人20天开发、8000元宣发，8月7日上线首日1832份，5天破5000份，净营收约10万元。","category":"UP主观点","tags":"案例,个人开发,宣发,营收","url":""},{"content":"2024年全球游戏市场规模预计达2000亿美元，国内竞争加剧，可作为Steam市场天花板与增长背景。","category":"UP主观点","tags":"游戏市场,市场规模,2024","url":""},{"content":"行业分析可用PESTEL、行业生命周期、价值链分析，覆盖外部环境、竞争格局与关键参与者。","category":"UP主观点","tags":"行业分析,方法论,PESTEL,价值链","url":""},{"content":"市场调研需覆盖规模、增长、竞争者、消费者行为；数据可从政府统计、行业报告、数据平台获取。","category":"UP主观点","tags":"数据维度,数据来源,市场调研","url":""},{"content":"《黑神话：悟空》2024年获TGA年度最佳动作游戏，半年销量破2000万，成国产3A标杆。","category":"UP主观点","tags":"黑神话悟空,销量,TGA,2024","url":""},{"content":"游戏科学2004年起经历《斗战神》《百将行》《战争艺术：赤潮》，2018首曝《黑神话》，2024成功。","category":"UP主观点","tags":"游戏科学,研发周期,案例","url":""},{"content":"《燕云十六声》定位从“中国首款3A武侠”调整为“国风开放世界RPG”，百度指数飙升200%，口碑逆转。","category":"UP主观点","tags":"发行策略,定位调整,百度指数","url":""},{"content":"游戏运营核心含发行制作人、数据分析、商业化设计、社区管理；关键认知：用户定位、差异化传递、商业化与留存平衡、长线迭代。","category":"UP主观点","tags":"游戏运营,发行策略,长线运营","url":""},{"content":"游戏产业链从研发、发行、运营到用户；策划分系统/关卡/数值/文案，美术含原画、3D建模、场景设计。","category":"UP主观点","tags":"产业链,研发发行,岗位","url":""},{"content":"2026年1—8月Steam 2000款高PCU样本，分看爆发高度与持续活跃。","category":"UP主观点","tags":"Steam,样本,数据口径","url":""},{"content":"PCU为观察期最高同时在线；持续活跃用同期月均；销量收入另查。","category":"UP主观点","tags":"PCU,持续活跃,指标口径","url":""},{"content":"赛道三步法：老游戏评测占比、千评新品÷样本、近3月月均÷前12月月均。","category":"UP主观点","tags":"赛道分析,方法论,Steam新品","url":""},{"content":"2026-09-30批次：2024-09-30后首发且评测≥10条付费新品，8品类2614款。","category":"UP主观点","tags":"数据样本,Steam新品,品类","url":""},{"content":"口径警示：评测份额≠玩家数/销售额；千评仅观察门槛，不代表盈利。","category":"UP主观点","tags":"数据口径,风险提示,Steam","url":""},{"content":"一年约2万款新游上Steam，近一半评测不到10条。","category":"UP主观点","tags":"Steam,新品供给,市场概况","url":""},{"content":"案例：Bills 2人7个月，72小时10万、20天33万；BOMBANANA 10天100万。","category":"UP主观点","tags":"独立游戏,销量案例,Steam","url":""},{"content":"立项五问：谁会买、为何选你、做得完吗、用什么证明、什么结果改变决定。","category":"UP主观点","tags":"立项验证,方法论,独立游戏","url":""},{"content":"「实时制构筑卡牌」分析的数据已基本到位，最后缺口是供给节奏与最直接对标品的活跃度。","category":"调研结论","tags":"实时制构筑卡牌,数据缺口,竞争格局,进入机会","url":""},{"content":"「现在没有TCG+跑团游戏」属可证伪的事实断言，若被证伪，差异化维度将由亮点直接降为no-signal","category":"调研结论","tags":"方法论,差异化验证,TCG","url":""},{"content":"立项评估缺团队规模、项目范围、2D/3D参数时，评分大量落在中性占位、置信度偏低","category":"调研结论","tags":"方法论,立项评估,参数输入","url":""},{"content":"检索无精确匹配时会模糊兜底到其他项目报告，不可当作目标项目评估结论使用","category":"调研结论","tags":"方法论,数据溯源,检索","url":""},{"content":"Steam调研法：按coming_soon排序，用标签“卡牌游戏”及关键词“TCG 跑团”搜索，识别先例与竞品。","category":"调研结论","tags":"Steam,市场调研,coming_soon,标签,关键词,竞品","url":""},{"content":"截至2026-10-16本地仅3个项目档案，均为卡牌构筑方向，无“疯狂水世界”。","category":"调研结论","tags":"项目档案,日期,品类分布","url":""},{"content":"引擎基准工期3个月 vs 自报12个月，范围失控为首要风险；建议2–3月原型节点做go/no-go","category":"调研结论","tags":"工期评估,范围控制,里程碑决策","url":""},{"content":"2026-10 幸存者like（吸血鬼Like/Bullet Heaven）竞品快照（Steam商店，2026-10-15取数）：Vampire Survivors 1794680（¥18.75，25.2万推荐，97%好评，2022-10，历史峰值77061，24h峰值4078）；Brotato土豆兄弟 1942280（¥22，4.4万评测94%，2023-06，历史峰值38761，24h峰值12970）；深岩银河:幸存者 2321470（¥31.20，5780评测69%，2025-09正式版，褒贬不一）；Halls of Torment苦痛殿堂 2218750（¥28，1446评测84%，MC88，2024-09）；黎明前20分钟 1966900（¥22，2.79万推荐，2023-06）；吸血鬼爬行者 3265700（poncle出品，¥31.20，18874推荐/5575评测97%，2026-04）；贪婪大地 2218400（¥48，2959推荐83%，2025-09）。价格带集中¥18-48，中位数约¥28。","category":"市场数据","tags":"幸存者like,吸血鬼Like,竞品快照,Steam价格带,Bullet Heaven","url":""},{"content":"幸存者like赛道拥挤度评估（2026-10-15）：Steam\"幸存者\"关键词命中约1303款游戏，其中282款为\"即将推出\"。品类自2022-10 VS上线后爆发，新游发行2025年约450款→2026年约350款（-22%，动量转衰退）。头部3款（VS/Brotato/深岩银河幸存者）占据绝大多数评测量，长尾新品多评测不足百条。需求规模大（头部合计估算销量超千万份）但竞争强度极高、差异化空间弱，属\"高需求+高饱和\"红海。立项评估（2人新手/2D/小型基准）市场潜力53/100（C级），窗口评级\"险\"，建议走MVP激进试水路线并强差异化。","category":"调研结论","tags":"幸存者like,赛道饱和,立项评估,红海,窗口期","url":""},{"content":"测试条目：幸存者like 品类 2026 年新游 120 款，头部《X》评价 5 万条","category":"测试","tags":"幸存者like,新游","url":""}];</script>
+<script>window.SYSTEM_PROMPT = "你是「Steam 市场侦察兵」——一名专精 Steam 游戏市场的调研分析师与独立游戏立项顾问，运行在用户本机。\n\n【你的知识背景】\n本地知识库最初由 B 站 UP 主「Gaby学姐说」(https://space.bilibili.com/3546782527130177) 的 54 期视频观点播种：内容涵盖 Steam 独立游戏市场数据拆解、立项方法论、宣发全流程、爆款案例复盘（如 Friendslop、放置之路、玩具店大整理）。后续调研结论、市场复盘会不断沉淀进知识库。\n\n【工作原则】\n1. 涉及市场、竞品、趋势、立项的问题，必须先用工具获取实时数据（Steam 商店数据优先级高于记忆和猜测），再下结论。\n2. 所有数据注明来源与日期；与知识库旧结论冲突时，以最新数据为准并说明变化。\n3. 市场未来不可预测：不要铁口直断。给概率、给情景、给可复查的检查信号。\n4. 面向小团队/独立开发者务实建议：钱、时间、人力都是稀缺资源。\n5. 用中文回答，Markdown 排版，引用外部来源时给链接。\n6. 关键数据点用 kb_add_insight 沉淀进知识库（只写有依据的内容）。\n7. 工具结果可能被截断，属正常现象，必要时换参数再查。\n8. 用户问\"值不值得做/要多久/立项\"时：先收集品类竞品数据（steam_store_search 的 released_desc/topselling/coming_soon 三个视角 + 竞品详情与在线 + 搜索趋势），再调用 evaluate_project 引擎出评分报告。\n9. 本地项目档案：用 project_list 查看已评估项目，用 project_report 读取某项目的评估报告全文。用户说「输出项目X的评估结论」（或「回顾/查看项目X的报告」）时，必须先用 project_report 读到报告，再复述关键结论（评分/窗口/工期/建议），不要凭记忆猜测，也不要重新跑一次立项评估。\n10. 工具调用要克制：一轮对话总调用次数有限（约 14 次），优先查最关键的数据，不要在同类查询上反复试探。";</script>
+<script>
+const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+const truncate = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n) + '…' : s; };
+const localNow = () => new Date().toLocaleString('zh-CN', { hour12: false });
+// 立项评估引擎：市场潜力评分 + 开发周期估算 + 上线窗口/时机评估
+// 设计原则：市场未来不可预测 → 不铁口直断，给出三档工期、窗口评级、情景策略与季度检查信号
+
+// ---------- 开发周期基准表（结合 UP 主案例与行业公开案例） ----------
+// months: [下限, 上限]（单人、中型范围、完整版）
+const GENRE_BENCH = [
+  { match: /吸血鬼|幸存者|survivors?/i, label: '幸存者like', months: [3, 8], note: '当前制作门槛最低的动作品类之一' },
+  { match: /放置|挂机|idle|clicker/i, label: '放置/挂机', months: [6, 14], note: '参考《放置之路》：2人13个月、10万愿望单' },
+  { match: /钓鱼|模拟经营|经营|农场|餐厅|商店|生活模拟|life.?sim|管理/i, label: '模拟经营/生活模拟', months: [6, 16], note: '参考 Friendslop（2天100万份）等爆款，内容量决定工期' },
+  { match: /休闲|收纳|整理|清洁|小游戏|派对|party|jam/i, label: '休闲/收纳小游戏', months: [1.5, 5], note: '参考《玩具店大整理》：1人20天、首周5000+份' },
+  { match: /肉鸽|rogue|卡牌|卡组|deck|爬塔/i, label: '肉鸽/卡牌', months: [10, 22], note: '数值系统与内容量是工期大头' },
+  { match: /银河城|平台跳跃|平台动作|platformer|metroid/i, label: '2D 平台/银河城', months: [12, 28], note: '关卡设计成本高' },
+  { match: /解谜|puzzle|视觉小说|文字|avg|gal/i, label: '解谜/视觉小说', months: [6, 18], note: '重内容创作，程序压力小' },
+  { match: /塔防|tower.?defense/i, label: '塔防', months: [9, 18], note: '' },
+  { match: /策略|4x|文明|城市建造|工厂|factory|殖民|战棋|rts|即时战略/i, label: '策略/建造', months: [18, 36], note: '系统复杂度高' },
+  { match: /魂|souls|类魂|动作rpg|动作角色/i, label: '3D 动作', months: [24, 48], note: '动作手感打磨周期长' },
+  { match: /物理|沙盒|破坏|体素|voxel/i, label: '3D 物理沙盒', months: [18, 40], note: '参考 BonkLab：单人1年才到预告阶段' },
+  { match: /开放世界|大型rpg|mmo|网游|多人|coop|联机|在线/i, label: '大型/多人', months: [30, 60], note: '小团队慎入，联机与内容量双高' },
+];
+const DEFAULT_BENCH = { label: '中型独立游戏(通用)', months: [12, 24], note: '' };
+
+function matchBench(text) {
+  for (const b of GENRE_BENCH) if (b.match.test(text)) return b;
+  return DEFAULT_BENCH;
+}
+
+function estimateDevTime({ genre = '', description = '', teamSize = 1, experience = '有经验', dimension = '', scope = '' }) {
+  const text = `${genre} ${description}`;
+  const bench = matchBench(text);
+  const dim = String(dimension || (bench.months[0] > 20 ? '3D' : '2D')).toLowerCase();
+  const dimFactor = dim.includes('3') ? 1.6 : 1.0;
+  const scopeFactor = /大型|开放世界|多周目|上百|100\+|完整主线|庞大|海量/i.test(scope + description)
+    ? 1.5
+    : /小型|小体量|demo|原型|极简|短平快|几小时|休闲/i.test(scope + description)
+      ? 0.6
+      : 1.0;
+  const n = Math.max(1, Math.round(Number(teamSize) || 1));
+  const eff = n === 1 ? 1.0 : n === 2 ? 0.72 : n === 3 ? 0.6 : n === 4 ? 0.52 : n === 5 ? 0.47 : 0.42;
+  const expFactor = /资深|10年|十年|老手|做过.*上线/i.test(experience) ? 0.8 : /新手|学生|第一次|零经验|没做过/i.test(experience) ? 1.45 : 1.0;
+  const base = ((bench.months[0] + bench.months[1]) / 2) * dimFactor * scopeFactor * eff * expFactor;
+  const r1 = (x) => Math.round(x * 10) / 10;
+  const months = {
+    optimistic: Math.max(2, r1(base * 0.7)),
+    expected: Math.max(3, r1(base)),
+    pessimistic: Math.max(5, r1(base * 1.5)),
+  };
+  const demo = Math.max(1, r1(months.expected * 0.4));
+  const mvp = Math.max(2, r1(months.expected * 0.55));
+  const ea = Math.max(4, r1(months.expected * 0.7));
+  const polish = Math.max(2, r1(months.expected * 0.25));
+  const routes = [
+    { name: '路线A · 激进试水（MVP）', months: r1(mvp + 2), desc: `核心循环 MVP（${mvp}个月）+ 约8周愿望单预热后上线试水，验证需求再决定扩内容` },
+    { name: '路线B · 均衡（EA 抢先体验）', months: r1(ea), desc: `${ea}个月进抢先体验，边卖边迭代 6-12 个月再转正式版` },
+    { name: '路线C · 完整打磨（直接 1.0）', months: r1(months.expected + polish), desc: `${months.expected}个月完成内容 + ${polish}个月打磨与宣发，直接正式发售` },
+  ];
+  return {
+    genreLabel: bench.label,
+    dimension: dim.includes('3') ? '3D' : '2D',
+    months,
+    milestones: { demo, mvp, ea, polish },
+    routes,
+    formulaNote: `${bench.label}基准 ${bench.months[0]}-${bench.months[1]} 月(单人) × 维度${dimFactor} × 范围${scopeFactor} × 团队效率${eff}(${n}人) × 经验${expFactor}。${bench.note}`,
+  };
+}
+
+// ---------- 市场潜力评分 ----------
+// m = { genre, competitors:[{appid,name,price,reviews,positivePct,releaseYear,peak24h}], releasesByYear:{}, upcomingCount, topGameAgeMonths, recentHitAgeMonths, chineseShare, description, kbInsight }
+// 每个维度带 status：ok=数据充足 / partial=部分数据 / no-data=无数据(中性50分) / no-signal=分析已跑但无显著信号
+function scoreMarket(m = {}) {
+  const dims = [];
+  const competitors = (m.competitors ?? []).filter(Boolean);
+  const releasesByYear = m.releasesByYear ?? {};
+  const years = Object.keys(releasesByYear).map(Number).filter((y) => y > 2000).sort();
+  const curYear = new Date().getFullYear();
+  const thisYear = releasesByYear[curYear] ?? null;
+  const prevYear = releasesByYear[curYear - 1] ?? null;
+  const hasReleases = Object.keys(releasesByYear).length > 0;
+  const upcoming = m.upcomingCount ?? null;
+  let momentum = 'flat';
+  let hype = false;
+
+  // 1. 需求规模 (25)
+  {
+    const withReviews = competitors.filter((c) => c.reviews && c.reviews > 0);
+    let score = 50, detail, status, gaps = [];
+    if (withReviews.length) {
+      const totalSalesEst = withReviews.reduce((s, c) => s + c.reviews * 35, 0); // Steam 评价数×~35 ≈ 销量
+      score = clamp(10 + Math.log10(1 + totalSalesEst) / Math.log10(1e6) * 90, 10, 98);
+      const topPeak = Math.max(0, ...competitors.map((c) => c.peak24h ?? 0));
+      detail = `头部${Math.min(withReviews.length, 10)}款估算总销量约${totalSalesEst >= 10000 ? (totalSalesEst / 10000).toFixed(1) + '万' : Math.round(totalSalesEst)}份；品类最高24h在线${topPeak}`;
+      status = competitors.length >= 3 ? 'ok' : 'partial';
+      if (status === 'partial') gaps = ['热销竞品样本不足3款'];
+    } else {
+      detail = '未获取到竞品评价/销量数据，无法估算需求规模，按中性 50 分处理';
+      status = 'no-data';
+      gaps = ['热销竞品详情（评价数）', '品类在线人数'];
+    }
+    dims.push({ name: '需求规模', weight: 25, score: Math.round(score), detail, status, gaps });
+  }
+
+  // 2. 竞争强度 (20)：得分越高 = 竞争越小（越蓝海）；缺失的子指标不参与加权
+  {
+    const parts = [];
+    const gaps = [];
+    if (hasReleases) {
+      const recentCount = Object.entries(releasesByYear)
+        .filter(([y]) => Number(y) >= curYear - 1)
+        .reduce((s, [, n]) => s + n, 0);
+      const intensity = clamp(recentCount / 120, 0, 1);
+      parts.push({ w: 50, score: clamp(100 - intensity * 100, 5, 100), label: `近两年新游${recentCount}款（拥挤度${Math.round(intensity * 100)}%）` });
+    } else {
+      gaps.push('品类新游发行列表（Steam 商店搜索未返回：限流或品类标签未匹配）');
+    }
+    if (competitors.length >= 5) {
+      const totalReviews = competitors.reduce((s, c) => s + (c.reviews ?? 0), 0) || 1;
+      const top3 = [...competitors].sort((a, b) => (b.reviews ?? 0) - (a.reviews ?? 0)).slice(0, 3);
+      const headShare = top3.reduce((s, c) => s + (c.reviews ?? 0), 0) / totalReviews;
+      parts.push({ w: 30, score: clamp(100 - headShare * 100, 5, 100), label: `头部3款占${Math.round(headShare * 100)}%评价量` });
+    } else {
+      gaps.push('热销竞品不足5款，无法评估头部集中度');
+    }
+    if (upcoming != null) {
+      const upScore = clamp(100 - (Math.log10(1 + upcoming) / Math.log10(1000)) * 100, 5, 100);
+      parts.push({ w: 20, score: Math.round(upScore), label: `即将上线${upcoming}款` });
+    } else {
+      gaps.push('即将上线竞品数量未获取到');
+    }
+    let score = 50, detail, status;
+    if (parts.length) {
+      const wsum = parts.reduce((s, p) => s + p.w, 0);
+      score = parts.reduce((s, p) => s + p.score * p.w, 0) / wsum;
+      detail = parts.map((p) => p.label).join('；');
+      if (score < 40) detail += ' → 红海（竞争惨烈）';
+      else if (score >= 70) detail += ' → 蓝海（竞争温和）';
+      else detail += ' → 竞争中等';
+      status = gaps.length ? 'partial' : 'ok';
+    } else {
+      detail = '无任何竞争相关数据，按中性 50 分处理';
+      status = 'no-data';
+    }
+    if (m.kbInsight) detail += `。知识库参考：${truncate(m.kbInsight, 60)}`;
+    dims.push({ name: '竞争强度(得分越高竞争越小)', weight: 20, score: Math.round(score), detail, status, gaps });
+  }
+
+  // 3. 增长趋势 (20)
+  {
+    let score = 50, detail, status, gaps = [];
+    if (thisYear != null && prevYear != null && prevYear > 0) {
+      const growth = (thisYear - prevYear) / prevYear;
+      if (prevYear < 10) {
+        // 上年度样本过少，同比不可靠
+        score = 50;
+        momentum = 'flat';
+        status = 'partial';
+        detail = `新游发行：${curYear - 1}年仅${prevYear}款 → ${curYear}年${thisYear}款，上年度样本过少（<10），同比数字不可靠，按中性 50 分处理`;
+        gaps = [`${curYear - 1}年发行样本仅${prevYear}款，无法可靠计算同比（品类新游过多或过少都会导致300条样本窗口不足）`];
+      } else {
+        score = clamp(50 + growth * 250, 10, 95);
+        momentum = growth > 0.25 ? 'rising' : growth < -0.15 ? 'declining' : 'flat';
+        detail = `新游发行：${curYear - 1}年${prevYear}款 → ${curYear}年${thisYear}款（${growth >= 0 ? '+' : ''}${Math.round(growth * 100)}%）`;
+        if (prevYear < 30) detail += `（样本为最近约300条新游，${curYear - 1}年数据可能不完整）`;
+        if (momentum === 'flat') {
+          status = 'no-signal';
+          detail += ' → 同比基本持平，无明显趋势信号';
+        } else {
+          status = 'ok';
+        }
+      }
+    } else if (hasReleases) {
+      detail = `仅有 ${years.join('/')} 年数据，缺少上一年度对比样本，无法判断同比趋势，按中性 50 分处理`;
+      status = 'partial';
+      gaps = ['跨年度发行数据（品类新游过多或过少都会导致300条样本窗口不足一年）'];
+    } else {
+      detail = '未获取到品类新游发行数据，无法判断趋势，按中性 50 分处理';
+      status = 'no-data';
+      gaps = ['品类新游发行列表（Steam 商店搜索未返回）'];
+    }
+    const hitAge = m.recentHitAgeMonths ?? m.topGameAgeMonths;
+    if (hitAge != null && hitAge <= 12) {
+      hype = true;
+      momentum = 'hype';
+      detail += `；⚠️ 近期爆款上线仅${hitAge}个月 → 热点驱动期，窗口短且拥挤`;
+    }
+    if (upcoming != null && upcoming > 0) detail += `；即将上线竞品${upcoming}款`;
+    dims.push({ name: '增长趋势', weight: 20, score: Math.round(score), detail, status, gaps });
+  }
+
+  // 4. 商业化空间 (15)
+  {
+    const prices = competitors.map((c) => c.price).filter((p) => p != null && !Number.isNaN(p) && p > 0);
+    const pcts = competitors.map((c) => c.positivePct).filter((p) => p != null);
+    const gaps = [];
+    if (!prices.length) gaps.push('竞品价格');
+    if (!pcts.length) gaps.push('竞品好评率');
+    if (!prices.length && !pcts.length) {
+      dims.push({ name: '商业化空间', weight: 15, score: 50, detail: '未获取到竞品价格与好评率数据，按中性 50 分处理', status: 'no-data', gaps });
+    } else {
+      let raw = 0, wsum = 0;
+      const notes = [];
+      if (prices.length) {
+        const med = [...prices].sort((a, b) => a - b)[Math.floor(prices.length / 2)];
+        raw += (med <= 20 ? 75 : med <= 40 ? 65 : med <= 70 ? 50 : 35) * 50;
+        wsum += 50;
+        notes.push(`品类价格中位数 ¥${med}（独游 15-50 元带最佳）`);
+      }
+      if (pcts.length) {
+        const avg = pcts.reduce((s, p) => s + p, 0) / pcts.length;
+        raw += clamp(avg * 1.2, 0, 100) * 50;
+        wsum += 50;
+        notes.push(`头部平均好评率 ${Math.round(avg)}%`);
+      }
+      dims.push({
+        name: '商业化空间', weight: 15,
+        score: Math.round(wsum ? raw / wsum : 50),
+        detail: notes.join('；'),
+        status: gaps.length ? 'partial' : 'ok',
+        gaps,
+      });
+    }
+  }
+
+  // 5. 平台匹配度 (10)
+  {
+    const chineseShare = m.chineseShare;
+    if (chineseShare != null) {
+      dims.push({
+        name: '平台匹配度', weight: 10,
+        score: Math.round(clamp(50 + chineseShare * 40, 20, 95)),
+        detail: `竞品支持简体中文比例 ${Math.round(chineseShare * 100)}%（Steam 国区是独游第一大市场）`,
+        status: 'ok', gaps: [],
+      });
+    } else {
+      dims.push({
+        name: '平台匹配度', weight: 10, score: 70,
+        detail: '未获取到竞品语言支持数据，按默认 70 分处理',
+        status: 'no-data',
+        gaps: ['竞品语言支持情况'],
+      });
+    }
+  }
+
+  // 6. 差异化空间 (10)
+  {
+    const desc = String(m.description ?? '');
+    const uspHits = ['创新', '独特', '首创', '没有同类', '融合', '新玩法', '反转', 'meta', '中式', '国风', '联机', '合作', '剧情', '叙事'].filter((k) => desc.includes(k));
+    if (uspHits.length) {
+      dims.push({
+        name: '差异化空间', weight: 10,
+        score: Math.round(clamp(45 + uspHits.length * 15, 20, 90)),
+        detail: `描述中识别到 ${uspHits.length} 个差异化信号（${uspHits.slice(0, 4).join('、')}）`,
+        status: 'ok', gaps: [],
+      });
+    } else {
+      dims.push({
+        name: '差异化空间', weight: 10, score: 40,
+        detail: '描述中未提及创新点/独特卖点，判为无差异化信号（提示：立项描述缺少与品类头部的区隔）',
+        status: 'no-signal', gaps: [],
+      });
+    }
+  }
+
+  const total = Math.round(dims.reduce((s, d) => s + d.score * d.weight, 0) / 100);
+  const letter = total >= 85 ? 'S' : total >= 70 ? 'A' : total >= 55 ? 'B' : total >= 40 ? 'C' : 'D';
+  const completeness = Math.round((dims.filter((d) => d.status === 'ok').length / dims.length) * 100);
+
+  return { total, letter, dims, completeness, momentum, hype, releasesByYear, upcomingCount: upcoming };
+}
+
+// ---------- 上线窗口评估 ----------
+const RATING_ORDER = ['优', '良', '险', '闭'];
+function downgrade(r) { const i = RATING_ORDER.indexOf(r); return RATING_ORDER[Math.min(i + 1, 3)]; }
+
+function assessWindow({ devMonthsExpected = 12, market = {} }) {
+  const { momentum = 'flat', upcomingCount = 0, topGameAgeMonths = null } = market;
+  let windowLen;
+  switch (momentum) {
+    case 'rising': windowLen = 24; break;
+    case 'hype': windowLen = 12; break;
+    case 'declining': windowLen = 9; break;
+    default: windowLen = 15;
+  }
+  const need = devMonthsExpected;
+  let rating = need <= windowLen * 0.5 ? '优' : need <= windowLen * 0.8 ? '良' : need <= windowLen * 1.2 ? '险' : '闭';
+  if (upcomingCount >= 8) rating = downgrade(rating);
+  if (momentum === 'declining') rating = downgrade(rating);
+
+  const launchDate = new Date(Date.now() + need * 30.44 * 86400000).toISOString().slice(0, 10);
+  const rationale = [];
+  rationale.push(`品类动量：${momentum === 'rising' ? '上升期' : momentum === 'hype' ? '热点驱动期' : momentum === 'declining' ? '衰退期' : '平稳期'}，窗口预计约 ${windowLen} 个月`);
+  rationale.push(`按基准工期 ${need} 个月计，上线时间约 ${launchDate}`);
+  if (upcomingCount > 0) rationale.push(`已知即将上线竞品 ${upcomingCount} 款${upcomingCount >= 8 ? '（拥挤，窗口评级已下调）' : ''}`);
+  if (momentum === 'hype') rationale.push('热点驱动品类降温快，窗口按 12 个月封顶');
+
+  const strategies = {
+    优: '窗口充裕：可走完整打磨路线（路线C），并预留宣发周期；仍建议每季度复查市场信号。',
+    良: '窗口尚可：建议均衡路线（路线B，EA 抢先体验）降低风险，用抢先体验期观察窗口变化。',
+    险: '窗口偏紧：建议激进路线（路线A，MVP 试水）抢先卡位；若坚持完整版，必须有强差异化护城河。',
+    闭: '窗口基本关闭：基准工期下上线时品类红利大概率消退；建议调整范围（缩短到 MVP 级）、寻找差异化细分，或转向相邻品类。',
+  };
+
+  return {
+    rating,
+    windowLenMonths: windowLen,
+    launchDate,
+    needMonths: need,
+    upcomingCount,
+    rationale,
+    strategy: strategies[rating],
+    checkpoints: [
+      '每季度：品类新游发行量（steam_store_search released_desc）是否继续上升',
+      '每季度：头部竞品 24h 在线（steam_charts）是否见顶回落',
+      '每月：品类内新爆款数量（好评>5000 的新作）是否仍在增加',
+      '上线前 6 个月：愿望单增速是否达标（新品节前应有明确转化数据）',
+      '上线前 3 个月：是否出现同类大厂产品/免费游戏入场',
+    ],
+  };
+}
+
+// ---------- 汇总报告 ----------
+function buildReport(brief, dev, market, win) {
+  const lines = [];
+  lines.push(`# 《${brief.name || '未命名项目'}》立项评估报告`);
+  lines.push(`> 评估时间：${localNow()} ｜ 数据来源：Steam 商店实时数据 / 网络检索 / 本地知识库 ｜ 本报告为概率性判断，市场未来不可预测，请结合最新数据滚动复查`);
+  lines.push('');
+  lines.push(`## 一、项目画像`);
+  lines.push(`| 项目 | 内容 |`);
+  lines.push(`|---|---|`);
+  lines.push(`| 名称 | ${brief.name || '-'} |`);
+  lines.push(`| 品类 | ${brief.genre || '-'}（匹配基准：${dev.genreLabel}） |`);
+  lines.push(`| 维度 | ${dev.dimension} ｜ 团队 ${brief.teamSize ?? 1} 人（${brief.experience ?? '有经验'}） |`);
+  lines.push(`| 简介 | ${(brief.description || '-').slice(0, 200)} |`);
+  lines.push('');
+  lines.push(`## 二、市场潜力评分：**${market.total} / 100（${market.letter} 级）**`);
+  const STATUS_MARK = { ok: '✅', partial: '⚠️', 'no-data': '❌', 'no-signal': '➖' };
+  const STATUS_TEXT = { ok: '数据充足', partial: '部分数据', 'no-data': '无数据·中性50分', 'no-signal': '无显著信号' };
+  lines.push(`| 维度 | 权重 | 得分 | 状态 | 依据 |`);
+  lines.push(`|---|---|---|---|---|`);
+  for (const d of market.dims) lines.push(`| ${d.name} | ${d.weight}% | ${d.score} | ${STATUS_MARK[d.status]} ${STATUS_TEXT[d.status]} | ${d.detail} |`);
+  lines.push('');
+  lines.push('> 得分口径：需求/趋势/商业化/平台/差异化 **越高越好**；竞争强度 **越高 = 竞争越小（越蓝海）**。状态列区分「系统无数据（❌/⚠️，按中性处理）」与「分析已跑但无显著信号（➖）」。');
+  const gapDims = market.dims.filter((d) => d.gaps && d.gaps.length);
+  if (gapDims.length) {
+    lines.push('');
+    lines.push(`## 附：数据缺口说明（${gapDims.length} 个维度数据不完整）`);
+    lines.push(`| 维度 | 缺失的数据 |`);
+    lines.push(`|---|---|`);
+    for (const d of gapDims) lines.push(`| ${d.name} | ${d.gaps.join('；')} |`);
+    lines.push('');
+    lines.push('> 缺口常见原因：Steam 商店接口限流（重试或稍后再评估可补齐）、品类标签未匹配（可在问题中写清楚品类名）、样本窗口不足。存在缺口时对应维度按中性 50 分计入，**总分置信度下降**。');
+  }
+  lines.push('');
+  const gapNote = market.completeness < 60
+    ? `> ⚠️ 数据完整度 ${market.completeness}%（仅 ${market.dims.filter((d) => d.status === 'ok').length}/${market.dims.length} 个维度数据充足），评分置信度有限，建议稍后重新评估补齐数据再决策。`
+    : `> 数据完整度 ${market.completeness}%。`;
+  lines.push(gapNote);
+  lines.push('');
+  lines.push(`## 三、开发周期估算`);
+  lines.push(`| 档位 | 工期 |`);
+  lines.push(`|---|---|`);
+  lines.push(`| 乐观 | ${dev.months.optimistic} 个月 |`);
+  lines.push(`| **基准** | **${dev.months.expected} 个月** |`);
+  lines.push(`| 悲观 | ${dev.months.pessimistic} 个月 |`);
+  lines.push('');
+  lines.push(`> ${dev.formulaNote}`);
+  lines.push('');
+  lines.push(`**里程碑**：垂直切片/Demo ~${dev.milestones.demo} 个月 → 核心循环 MVP ~${dev.milestones.mvp} 个月 → EA 可发布 ~${dev.milestones.ea} 个月 → 1.0 含打磨宣发 ~${dev.months.expected + dev.milestones.polish} 个月`);
+  lines.push('');
+  lines.push(`**三条路线**：`);
+  for (const r of dev.routes) lines.push(`- ${r.name}：约 **${r.months} 个月**。${r.desc}`);
+  lines.push('');
+  lines.push(`## 四、上线窗口与时机评估：**${win.rating}**`);
+  lines.push(`- 品类窗口预计约 **${win.windowLenMonths} 个月**；按基准工期上线时间约 **${win.launchDate}**`);
+  for (const r of win.rationale) lines.push(`- ${r}`);
+  lines.push('');
+  lines.push(`**窗口策略**：${win.strategy}`);
+  lines.push('');
+  lines.push(`## 五、结论：立项建议`);
+  const verdict = win.rating === '优' && market.total >= 70 ? 'GO ✅'
+    : win.rating === '闭' || market.total < 40 ? 'NO-GO ❌'
+      : '条件 GO ⚠️';
+  lines.push(`**${verdict}** —— 综合市场潜力（${market.total}/100）与窗口（${win.rating}）。`);
+  lines.push('');
+  lines.push(`**季度检查信号**（滚动复查，出现恶化即调整策略）：`);
+  for (const c of win.checkpoints) lines.push(`- [ ] ${c}`);
+  lines.push('');
+  lines.push(`## 六、风险与情景预案`);
+  lines.push(`| 情景 | 假设 | 应对 |`);
+  lines.push(`|---|---|---|`);
+  lines.push(`| 乐观 | 品类热度延续、无大厂入场 | 按路线C推进，预留宣发预算 |`);
+  lines.push(`| 中性 | 热度平稳回落 | 按路线B（EA）推进，用抢先体验期试探定价与内容方向 |`);
+  lines.push(`| 悲观 | 窗口提前关闭/爆款后继乏力 | 范围砍至 MVP（路线A）快速上线，或转差异化细分再评估 |`);
+  return lines.join('\n');
+}
+
+function runEvaluation(brief) {
+  const dev = estimateDevTime(brief);
+  const market = scoreMarket(brief.market ?? { genre: brief.genre, description: brief.description });
+  const win = assessWindow({ devMonthsExpected: dev.months.expected, market });
+  const report = buildReport(brief, dev, market, win);
+  return { dev, market, window: win, report };
+}
+
+window.EVAL = { estimateDevTime, scoreMarket, assessWindow, buildReport };
+</script>
+<script>/* SteamScout 单文件版（双击 index.html 即用）
+ * 两种模式：
+ *  - 单文件模式：浏览器直连 OpenAI 兼容 LLM（Key 存本地 localStorage）+ 内置知识库 + 规则评估引擎
+ *  - 完整模式：自动探测本机服务(127.0.0.1:8792)，可用时走服务端（实时 Steam/B站数据、SQLite 存档）
+ */
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const SERVER_BASE = 'http://127.0.0.1:8792';
+  const LS_CFG = 'scout_llm_v1';
+  const LS_KB = 'scout_kb_v1';
+  const LS_HIST = 'scout_hist_v1';
+
+  const state = {
+    mode: 'standalone', // standalone | server
+    cfg: null,
+    kb: [],
+    hist: [],
+    busy: false,
+  };
+
+  // ---------- 工具 ----------
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+  const truncate = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n) + '…' : s; };
+  const localNow = () => new Date().toLocaleString('zh-CN', { hour12: false });
+  function toast(msg) {
+    let el = $('#toast');
+    if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('show'), 2600);
+  }
+
+  // ---------- 极简 Markdown 渲染 ----------
+  function md(text) {
+    const lines = String(text).split('\n');
+    let html = '';
+    let list = null;
+    const flushList = () => { if (list) { html += `<${list.tag}>${list.items.map((x) => `<li>${x}</li>`).join('')}</${list.tag}>`; list = null; } };
+    const inline = (t) => {
+      t = esc(t);
+      t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+      t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      t = t.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      t = t.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+      return t;
+    };
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^```/.test(line.trim())) { flushList(); const buf = []; i++; while (i < lines.length && !/^```/.test(lines[i].trim())) { buf.push(lines[i]); i++; } i++; html += `<pre><code>${esc(buf.join('\n'))}</code></pre>`; continue; }
+      if (/^\|.*\|$/.test(line.trim()) && i + 1 < lines.length && /^\|[\s:|-]+\|$/.test(lines[i + 1].trim())) {
+        flushList();
+        const head = line.trim().split('|').slice(1, -1).map((c) => c.trim());
+        let rows = '';
+        i += 2;
+        while (i < lines.length && /^\|.*\|$/.test(lines[i].trim())) { rows += '<tr>' + lines[i].trim().split('|').slice(1, -1).map((c) => `<td>${inline(c.trim())}</td>`).join('') + '</tr>'; i++; }
+        html += '<table><thead><tr>' + head.map((h) => `<th>${inline(h)}</th>`).join('') + '</tr></thead><tbody>' + rows + '</tbody></table>';
+        continue;
+      }
+      const hm = line.match(/^(#{1,4})\s+(.*)$/);
+      if (hm) { flushList(); const lv = hm[1].length; html += `<h${lv}>${inline(hm[2])}</h${lv}>`; i++; continue; }
+      if (/^\s*(---+|\*\*\*+)\s*$/.test(line)) { flushList(); html += '<hr>'; i++; continue; }
+      if (/^>\s?/.test(line)) { flushList(); const buf = []; while (i < lines.length && /^>\s?/.test(lines[i])) { buf.push(lines[i].replace(/^>\s?/, '')); i++; } html += `<blockquote>${buf.map(inline).join('<br>')}</blockquote>`; continue; }
+      const ul = line.match(/^\s*[-*+]\s+(.*)$/);
+      const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (ul || ol) { const tag = ul ? 'ul' : 'ol'; if (!list || list.tag !== tag) { flushList(); list = { tag, items: [] }; } list.items.push(inline((ul || ol)[1])); i++; continue; }
+      if (!line.trim()) { flushList(); i++; continue; }
+      flushList();
+      html += `<p>${inline(line)}</p>`;
+      i++;
+    }
+    flushList();
+    return html;
+  }
+
+  // ---------- 知识库（本地） ----------
+  function tokenize(text) {
+    const t = String(text).toLowerCase();
+    const out = [];
+    for (const m of t.matchAll(/[a-z0-9][a-z0-9.+-]{1,40}/g)) if (m[0].length >= 2) out.push(m[0]);
+    for (const m of t.matchAll(/[\u4e00-\u9fff]{2,}/g)) {
+      const r = m[0];
+      for (let i = 0; i < r.length - 1; i++) out.push(r.slice(i, i + 2));
+    }
+    return out;
+  }
+  function kbInit() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LS_KB) || 'null');
+      if (saved && Array.isArray(saved) && saved.length) { state.kb = saved; return; }
+    } catch {}
+    state.kb = Array.isArray(window.SEED_KB) ? window.SEED_KB.slice() : [];
+    kbSave();
+  }
+  function kbSave() {
+    try { localStorage.setItem(LS_KB, JSON.stringify(state.kb.slice(0, 600))); } catch {}
+  }
+  function kbSearch(query, limit = 4) {
+    const qts = tokenize(query);
+    if (!qts.length || !state.kb.length) return [];
+    const N = state.kb.length;
+    const df = {};
+    const docs = state.kb.map((d) => {
+      const tf = {};
+      for (const t of tokenize(d.content + ' ' + (d.tags || ''))) tf[t] = (tf[t] || 0) + 1;
+      return { d, tf, len: Object.values(tf).reduce((a, b) => a + b, 0) || 1 };
+    });
+    for (const doc of docs) for (const t of Object.keys(doc.tf)) df[t] = (df[t] || 0) + 1;
+    const scored = [];
+    for (const doc of docs) {
+      let s = 0;
+      for (const t of qts) if (doc.tf[t]) s += (1 + Math.log(doc.tf[t])) * Math.log(1 + N / ((df[t] || 0) + 1));
+      if (s > 0) scored.push({ s: s / Math.sqrt(doc.len), d: doc.d });
+    }
+    scored.sort((a, b) => b.s - a.s);
+    return scored.slice(0, limit).map((x) => x.d);
+  }
+
+  // ---------- LLM（浏览器直连 OpenAI 兼容接口） ----------
+  function loadCfg() {
+    try { state.cfg = JSON.parse(localStorage.getItem(LS_CFG) || 'null'); } catch { state.cfg = null; }
+    if (!state.cfg) state.cfg = { baseUrl: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-chat' };
+    $('#cfg-base').value = state.cfg.baseUrl || '';
+    $('#cfg-model').value = state.cfg.model || '';
+    $('#cfg-key').value = '';
+    $('#cfg-key').placeholder = state.cfg.apiKey ? `已保存：${state.cfg.apiKey.slice(0, 6)}…（留空保持不变）` : 'sk-…';
+  }
+  function saveCfg() {
+    const key = $('#cfg-key').value.trim();
+    state.cfg = {
+      baseUrl: ($('#cfg-base').value.trim() || 'https://api.deepseek.com').replace(/\/+$/, ''),
+      model: $('#cfg-model').value.trim() || 'deepseek-chat',
+      apiKey: key || (state.cfg && state.cfg.apiKey) || '',
+    };
+    localStorage.setItem(LS_CFG, JSON.stringify(state.cfg));
+    updateBadges();
+    toast('✅ 已保存到本机浏览器（localStorage）');
+  }
+  const llmReady = () => Boolean(state.cfg && state.cfg.apiKey);
+  function cfgSummary() { return `${state.cfg.baseUrl} · ${state.cfg.model}`; }
+
+  async function llmChat(messages, { stream = false, onDelta, temperature = 0.4, maxTokens = 2048 } = {}) {
+    if (!llmReady()) throw new Error('未配置 LLM API Key：点右上角「⚙️ 配置」填入你自己的 Key');
+    const url = state.cfg.baseUrl.replace(/\/+$/, '') + '/chat/completions';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${state.cfg.apiKey}` },
+      body: JSON.stringify({ model: state.cfg.model, messages, stream, temperature, max_tokens: maxTokens }),
+    });
+    if (!res.ok) {
+      const t = (await res.text().catch(() => '')).slice(0, 300);
+      throw new Error(`LLM 请求失败 HTTP ${res.status}：${t}`);
+    }
+    if (!stream) {
+      const j = await res.json();
+      return { content: j.choices?.[0]?.message?.content || '' };
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', content = '', reasoning = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        let j;
+        try { j = JSON.parse(payload); } catch { continue; }
+        const d = j.choices?.[0]?.delta || {};
+        if (d.content) { content += d.content; onDelta?.(d.content); }
+        if (d.reasoning_content) reasoning += d.reasoning_content;
+      }
+    }
+    if (!content && reasoning) {
+      // 推理型模型兜底：非流式重试
+      const r2 = await llmChat(messages, { stream: false, temperature, maxTokens });
+      return { content: r2.content };
+    }
+    return { content };
+  }
+
+  // ---------- 服务端模式（可选） ----------
+  async function detectServer() {
+    try {
+      const r = await fetch(SERVER_BASE + '/api/health', { signal: AbortSignal.timeout(1500) });
+      const j = await r.json();
+      state.mode = 'server';
+      return j;
+    } catch {
+      state.mode = 'standalone';
+      return null;
+    }
+  }
+  async function serverChat(message, onEvent) {
+    const res = await fetch(SERVER_BASE + '/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session: 'file-mode', message }),
+    });
+    if (!res.ok || !res.body) throw new Error('本地服务返回异常 HTTP ' + res.status);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (!line.startsWith('data:')) continue;
+        let e;
+        try { e = JSON.parse(line.slice(5).trim()); } catch { continue; }
+        onEvent(e);
+      }
+    }
+  }
+
+  // ---------- 消息渲染 ----------
+  const messagesEl = () => $('#messages');
+  function addMsg(role) {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + role;
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    wrap.appendChild(bubble);
+    messagesEl().appendChild(wrap);
+    scrollDown();
+    return { wrap, bubble, text: '' };
+  }
+  const scrollDown = () => { const el = messagesEl(); el.scrollTop = el.scrollHeight; };
+  function renderHist() {
+    messagesEl().innerHTML = '';
+    if (!state.hist.length) { welcome(); return; }
+    for (const m of state.hist) {
+      const msg = addMsg(m.role);
+      msg.bubble.innerHTML = m.role === 'assistant' ? md(m.content) : esc(m.content);
+    }
+    scrollDown();
+  }
+  function welcome() {
+    const w = addMsg('assistant');
+    w.bubble.innerHTML = md(
+      `**Steam 市场侦察兵 · 单文件版**\n\n双击即用，无需安装任何东西。功能取决于模式：\n\n` +
+      `| 模式 | 状态 | 能做 |\n|---|---|---|\n` +
+      `| 📄 单文件 | 当前 | AI 对话分析、内置知识库、开发周期/窗口评估、报告导出 PDF |\n` +
+      `| 🔌 完整 | 本机运行 \`start.bat\` 后自动连上 | 追加实时 Steam/B站数据采集、项目档案、自动复盘 |\n\n` +
+      `**三步用法**：① 描述游戏想法（含"值不值得做/多久上线"）→ 出评估报告；② 问任何 Steam 市场问题；③ 导出 PDF 或继续追问。\n\n` +
+      `> 首次使用请点右上角「⚙️ 配置」填入你自己的 LLM API Key（只存在本机浏览器）。`
+    );
+  }
+  function pushHist(role, content) {
+    state.hist.push({ role, content });
+    if (state.hist.length > 60) state.hist = state.hist.slice(-60);
+    try { localStorage.setItem(LS_HIST, JSON.stringify(state.hist)); } catch {}
+  }
+
+  // ---------- 提示词 ----------
+  function kbContext(query) {
+    const hits = kbSearch(query, 4);
+    if (!hits.length) return '';
+    return '\n\n【本地知识库摘录（B站 UP 主「Gaby学姐说」方法论 + 历史调研结论）】\n' + hits.map((h, i) => `${i + 1}. [${h.category}] ${h.content}`).join('\n');
+  }
+  const STANDALONE_NOTE = '\n\n【运行模式】当前为单文件离线模式：**没有实时 Steam/B站数据**。涉及竞品销量/价格/在线人数时，请明确说明是"估计/参考值"，不要编造精确数字；数据不确定就说不确定。开发周期与上线窗口可用引擎规则估算。';
+
+  // ---------- 评估（单文件模式） ----------
+  const evalKeywords = /评估|立项|值不值得|能不能做|值多少|做多久|多久.{0,6}(做|完成|开发|上线)|市场潜力|时机|可行性|还能.{0,6}(进场|入场|做)|红海|饱和/;
+  const isArchive = /(输出|回顾|查看|读取|导出).{0,12}(项目|档案)/;
+
+  async function standaloneEval(text) {
+    const ai = addMsg('assistant');
+    const sys = window.SYSTEM_PROMPT + STANDALONE_NOTE;
+    ai.bubble.innerHTML = '<p class="pulse">🔎 正在解析项目并做定性评估（单文件模式，无实时数据）…</p>';
+    scrollDown();
+    let brief = { name: '未命名项目', genre: '中型独立游戏', description: text.slice(0, 200), dimension: '2D', scope: '', teamSize: 1, experience: '有经验' };
+    try {
+      const r = await llmChat([
+        { role: 'system', content: '你是游戏立项信息提取助手。从用户描述提取 JSON：{"name","genre","description","dimension","scope","team_size","experience"}。genre 用中文品类名；dimension 填 2D 或 3D；scope 填 小型/中型/大型；team_size 数字；experience 填 新手/有经验/资深。未提及给默认值。只输出 JSON。' },
+        { role: 'user', content: text },
+      ], { temperature: 0 });
+      const j = JSON.parse(String(r.content).replace(/```json|```/g, '').trim());
+      brief = { ...brief, ...j, teamSize: Math.max(1, Math.round(Number(j.team_size) || 1)) };
+    } catch {}
+    // 规则引擎：工期（纯规则，可靠）
+    const dev = window.EVAL.estimateDevTime(brief);
+    // LLM：市场定性评分（无实时数据，明确标注）
+    ai.bubble.innerHTML = '<p class="pulse">📊 正在生成六维市场评估与专家解读…</p>';
+    let marketLLM = null;
+    try {
+      const r = await llmChat([
+        { role: 'system', content: sys + kbContext(text) + '\n\n【任务】基于你的知识与本地知识库，对该项目的 Steam 市场给出**定性**六维评估。只输出 JSON：{"dims":[{"name":"需求规模|竞争强度|增长趋势|商业化空间|平台匹配度|差异化空间","score":0-100,"detail":"依据(注明是估计)"}],"momentum":"rising|flat|declining|hype","upcoming_count":估计数字,"competitors":[{"name":"","price":数字,"reviews":估计,"positive_pct":估计,"release_year":估计}],"notes":"数据可信度说明"}' },
+        { role: 'user', content: JSON.stringify({ brief, description: text }) },
+      ], { temperature: 0.3, maxTokens: 1600 });
+      marketLLM = JSON.parse(String(r.content).replace(/```json|```/g, '').trim());
+    } catch (e) {
+      marketLLM = null;
+    }
+    const W = { 需求规模: 25, 竞争强度: 20, 增长趋势: 20, 商业化空间: 15, 平台匹配度: 10, 差异化空间: 10 };
+    const dims = (marketLLM?.dims || []).map((d) => ({
+      name: d.name, weight: W[d.name] ?? 10, score: clamp(Number(d.score) || 50, 0, 100),
+      detail: String(d.detail || '（估计值）'),
+      status: 'partial', gaps: ['实时 Steam 数据（单文件模式未采集）'],
+    }));
+    if (!dims.length) {
+      // LLM 失败时用中性分兜底
+      for (const [name, w] of Object.entries(W)) dims.push({ name, weight: w, score: 50, detail: '未能获取评估结果（LLM 未响应）', status: 'no-data', gaps: ['LLM 评估失败'] });
+    }
+    const total = Math.round(dims.reduce((s, d) => s + d.score * d.weight, 0) / 100);
+    const letter = total >= 85 ? 'S' : total >= 70 ? 'A' : total >= 55 ? 'B' : total >= 40 ? 'C' : 'D';
+    const completeness = Math.min(70, Math.round((dims.filter((d) => d.status !== 'no-data').length / 6) * 70));
+    const market = {
+      total, letter, dims, completeness,
+      momentum: marketLLM?.momentum || 'flat',
+      upcomingCount: marketLLM?.upcoming_count ?? null,
+      releasesByYear: {}, hype: marketLLM?.momentum === 'hype',
+    };
+    const win = window.EVAL.assessWindow({ devMonthsExpected: dev.months.expected, market });
+    const report = window.EVAL.buildReport(
+      { ...brief, teamSize: brief.teamSize, experience: brief.experience },
+      dev, market, win
+    );
+    const head = `> ⚠️ **单文件模式**：本报告无实时 Steam 数据，市场评分为 AI 定性估计（工期与窗口为规则引擎计算）。想要真实数据 → 本机运行 \`start.bat\` 后刷新本页，切到「🔌 完整模式」。\n\n`;
+    ai.bubble.innerHTML = md(head + report) + '<div class="row"><button class="mini" data-act="pdf">⤓ 导出 PDF</button></div>';
+    ai.wrap.querySelector('button[data-act="pdf"]').onclick = () => exportPDF(`${brief.name} 立项评估报告`, head + report);
+    const summary = `## 评估完成\n\n- 市场潜力（定性估计）：**${total}/100（${letter}）**\n- 基准工期：**${dev.months.expected} 个月**（乐观 ${dev.months.optimistic} / 悲观 ${dev.months.pessimistic}）\n- 上线窗口：**${win.rating}**（预计 ${win.windowLenMonths} 个月窗口，上线约 ${win.launchDate}）\n- 评分可信度：${completeness}%（无实时数据，偏低）\n\n> 需要真实数据版报告 → 运行 \`start.bat\` 后刷新页面。`;
+    pushHist('user', text);
+    pushHist('assistant', summary);
+    scrollDown();
+    return summary;
+  }
+
+  // ---------- 聊天（单文件模式） ----------
+  async function standaloneChat(text) {
+    const ai = addMsg('assistant');
+    ai.bubble.innerHTML = '<p class="pulse">💭 正在思考…</p>';
+    const sys = window.SYSTEM_PROMPT + (state.mode === 'standalone' ? STANDALONE_NOTE : '');
+    const msgs = [{ role: 'system', content: sys + kbContext(text) }];
+    for (const h of state.hist.slice(-8)) msgs.push({ role: h.role, content: h.content });
+    msgs.push({ role: 'user', content: text });
+    let acc = '';
+    try {
+      const r = await llmChat(msgs, {
+        stream: true,
+        onDelta: (d) => {
+          acc += d;
+          ai.bubble.innerHTML = (kbSearch(text, 3).length ? '' : '') + md(acc);
+          scrollDown();
+        },
+      });
+      if (!acc) acc = r.content;
+      ai.bubble.innerHTML = md(acc) + '<div class="row"><button class="mini" data-act="pdf">⤓ 导出 PDF</button></div>';
+      const btn = ai.wrap.querySelector('button[data-act="pdf"]');
+      if (btn) btn.onclick = () => exportPDF(extractTitle(acc), acc);
+      pushHist('user', text);
+      pushHist('assistant', acc);
+    } catch (e) {
+      ai.bubble.innerHTML = `<p class="err">❌ ${esc(String(e.message || e))}</p>`;
+    }
+    scrollDown();
+  }
+
+  // ---------- 服务端模式 ----------
+  async function serverModeChat(text) {
+    const ai = addMsg('assistant');
+    let status = null;
+    let acc = '';
+    const ensureStatus = (t) => {
+      if (!status) { status = document.createElement('div'); status.className = 'statusline'; ai.wrap.insertBefore(status, ai.bubble); }
+      status.textContent = t;
+    };
+    try {
+      await serverChat(text, (e) => {
+        if (e.type === 'phase') ensureStatus(`📊 第 ${e.index}/${e.total} 步：${e.text}`);
+        else if (e.type === 'status') ensureStatus(e.text);
+        else if (e.type === 'tool') ensureStatus(`🔧 ${e.name} ${e.status === 'end' ? '✓' : e.status === 'error' ? '✗' : '…'}`);
+        else if (e.type === 'delta') { acc += e.text; ai.bubble.innerHTML = md(acc); scrollDown(); }
+        else if (e.type === 'report') { acc = e.text + '\n\n' + acc; ai.bubble.innerHTML = md(acc); scrollDown(); }
+        else if (e.type === 'error') { ai.bubble.innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`; }
+      });
+      if (status) status.remove();
+      if (!acc) ai.bubble.innerHTML = '<p>（无内容）</p>';
+      else {
+        ai.bubble.innerHTML = md(acc) + '<div class="row"><button class="mini" data-act="pdf">⤓ 导出 PDF</button></div>';
+        const btn = ai.wrap.querySelector('button[data-act="pdf"]');
+        if (btn) btn.onclick = () => exportPDF(extractTitle(acc), acc);
+      }
+    } catch (e) {
+      if (status) status.remove();
+      ai.bubble.innerHTML = `<p class="err">❌ 本地服务调用失败：${esc(String(e.message || e))}。请确认已运行 start.bat。</p>`;
+    }
+    scrollDown();
+  }
+
+  // ---------- PDF 导出 ----------
+  const extractTitle = (t) => { const m = String(t).match(/^#\s*《([^》\n]+)》/); return m ? `${m[1]} 立项评估报告` : 'SteamScout 报告'; };
+  function exportPDF(title, markdown) {
+    const w = window.open('', '_blank');
+    if (!w) { toast('浏览器拦截了弹窗，请允许后重试'); return; }
+    w.document.open();
+    w.document.write(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<style>body{font-family:"Microsoft YaHei",sans-serif;color:#111;background:#fff;margin:0;padding:40px 48px;font-size:13px;line-height:1.75}
+h1{font-size:20px;border-bottom:2px solid #222;padding-bottom:8px}h2{font-size:16px;margin:18px 0 8px}h3{font-size:14px;margin:14px 0 6px}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12.5px}th,td{border:1px solid #999;padding:6px 8px;text-align:left}th{background:#f0f0f0}
+blockquote{border-left:3px solid #666;background:#f7f7f7;padding:6px 12px;margin:8px 0;color:#444}code{background:#f2f2f2;padding:1px 5px}
+.footer{margin-top:26px;color:#888;font-size:11px;border-top:1px solid #ccc;padding-top:8px}@media print{body{padding:10mm 12mm}}</style>
+</head><body>${md(markdown)}<div class="footer">由 Steam 市场侦察兵生成 · 数据来源：AI 知识与本地方法论知识库（单文件模式无实时数据）</div>
+<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),350));<\/script></body></html>`);
+    w.document.close();
+  }
+
+  // ---------- 发送入口 ----------
+  async function send(text) {
+    if (state.busy || !String(text).trim()) return;
+    text = String(text).trim();
+    state.busy = true;
+    $('#send').disabled = true;
+    const user = addMsg('user');
+    user.bubble.textContent = text;
+    try {
+      if (state.mode === 'server') await serverModeChat(text);
+      else if (evalKeywords.test(text) && !isArchive.test(text)) await standaloneEval(text);
+      else await standaloneChat(text);
+    } finally {
+      state.busy = false;
+      $('#send').disabled = false;
+    }
+  }
+
+  // ---------- 配置区 ----------
+  function updateBadges() {
+    const m = $('#mode-badge');
+    const l = $('#llm-badge');
+    m.textContent = state.mode === 'server' ? '🔌 完整模式（已连接本地服务）' : '📄 单文件模式（无实时数据）';
+    m.className = 'badge ' + (state.mode === 'server' ? 'ok' : 'warn');
+    l.textContent = llmReady() ? `🤖 LLM 已配置（${state.cfg.model}）` : '🤖 LLM 未配置 · 点⚙️填写';
+    l.className = 'badge ' + (llmReady() ? 'ok' : 'bad');
+    l.onclick = () => $('#cfg-panel').classList.toggle('hidden');
+  }
+
+  async function init() {
+    kbInit();
+    loadCfg();
+    try {
+      const h = JSON.parse(localStorage.getItem(LS_HIST) || '[]');
+      state.hist = Array.isArray(h) ? h : [];
+    } catch { state.hist = []; }
+    const srv = await detectServer();
+    updateBadges();
+    if (srv && srv.llm) $('#server-note').textContent = '已连上本机服务，实时数据与项目档案可用。';
+    else if (srv) $('#server-note').textContent = '已连上本机服务，但服务端未配置 LLM。';
+    renderHist();
+    if (!llmReady() && !srv) $('#cfg-panel').classList.remove('hidden');
+    if (state.mode === 'standalone') kbStats();
+  }
+
+  function kbStats() {
+    const n = state.kb.length;
+    const cats = {};
+    for (const k of state.kb) cats[k.category || '其他'] = (cats[k.category || '其他'] || 0) + 1;
+    $('#kb-stats').textContent = `📚 本地知识库：${n} 条（${Object.entries(cats).map(([c, v]) => `${c}${v}`).join(' / ')}）`;
+  }
+
+  // ---------- 事件绑定 ----------
+  $('#send').onclick = () => { const v = $('#input').value; $('#input').value = ''; $('#input').style.height = 'auto'; send(v); };
+  $('#input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#send').click(); }
+  });
+  $('#input').addEventListener('input', () => {
+    const el = $('#input');
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  });
+  $('#cfg-save').onclick = () => { saveCfg(); $('#cfg-panel').classList.add('hidden'); };
+  $('#cfg-test').onclick = async () => {
+    saveCfg();
+    $('#cfg-result').textContent = '正在测试…';
+    try {
+      const r = await llmChat([{ role: 'user', content: '只回复两个字母：OK' }], { temperature: 0, maxTokens: 16 });
+      $('#cfg-result').textContent = `✅ 测试通过：${(r.content || '').trim().slice(0, 40)}`;
+      updateBadges();
+    } catch (e) {
+      $('#cfg-result').textContent = `❌ ${String(e.message || e).slice(0, 200)}`;
+    }
+  };
+  $('#cfg-close').onclick = () => $('#cfg-panel').classList.add('hidden');
+  $('#btn-kb').onclick = () => {
+    const q = prompt('搜索本地知识库（回车查看全部）', '');
+    const hits = q ? kbSearch(q, 8) : state.kb.slice(0, 8);
+    const box = $('#kb-box');
+    box.classList.toggle('hidden', false);
+    box.innerHTML = hits.length
+      ? hits.map((h) => `<div class="kb-item"><span class="kb-cat">${esc(h.category || '')}</span> ${esc(h.content)}</div>`).join('')
+      : '<div class="kb-item">没找到相关条目</div>';
+  };
+  document.querySelectorAll('.chip[data-q]').forEach((c) => {
+    c.onclick = () => { $('#input').value = c.dataset.q; $('#input').focus(); };
+  });
+  document.addEventListener('click', (e) => {
+    if (e.target.id === 'cfg-mask') $('#cfg-panel').classList.add('hidden');
+  });
+
+  init();
+})();
+</script>
+</body>
+</html>

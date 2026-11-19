@@ -1,0 +1,8 @@
+{
+  "port": 8792,
+  "upMid": "3546782527130177",
+  "llm": { "temperature": 0.3, "maxTokens": 4096, "timeoutMs": 180000 },
+  "agent": { "maxToolRounds": 8, "maxToolCalls": 14, "historyTurns": 12 },
+  "evolution": { "enabled": true, "digestHour": 9, "intervalHours": 24, "autoResearchMaxPerDay": 1, "upSync": true },
+  "steam": { "cc": "cn", "l": "schinese", "maxResults": 60 }
+}
