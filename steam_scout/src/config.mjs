@@ -84,6 +84,18 @@ export const CONFIG = {
     l: cfgJson.steam?.l ?? 'schinese',
     maxResults: Number(cfgJson.steam?.maxResults ?? 60),
   },
+  // 可选：第三方/付费数据源（补充 Steam 官方接口拿不到的数据，如销量/拥有者估算）
+  data: {
+    provider: String(env('DATA_PROVIDER', '')).trim().toLowerCase(),
+    apiKey: env('DATA_PROVIDER_KEY', ''),
+    // URL 模板，支持 {appid} 与 {name} 占位符；留空则用内置预设
+    urlTemplate: env('DATA_PROVIDER_URL', ''),
+    // 字段映射 JSON，例如 {"reviews":"reviews.total","owners":"owners"}
+    fieldMap: env('DATA_PROVIDER_MAP', ''),
+    // 鉴权头（默认 Authorization: Bearer <key>）
+    authHeader: env('DATA_PROVIDER_AUTH_HEADER', 'authorization'),
+    authPrefix: env('DATA_PROVIDER_AUTH_PREFIX', 'Bearer '),
+  },
 };
 
 fs.mkdirSync(CONFIG.dataDir, { recursive: true });

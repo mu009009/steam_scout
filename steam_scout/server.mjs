@@ -8,6 +8,7 @@ import { llmConfigured, chat } from './src/llm.mjs';
 import * as db from './src/db.mjs';
 import { safeJsonParse } from './src/util.mjs';
 import { dataInventory } from './src/inventory.mjs';
+import { dataProviderStatus, providerGameStats, PRESETS } from './src/tools/paid-data.mjs';
 import { startScheduler, runDigest } from './src/evolution.mjs';
 
 const MIME = {
@@ -141,7 +142,63 @@ const server = http.createServer(async (req, res) => {
       runDigest({ force: true, log: console.log }).catch((e) => console.error('[digest-now]', e.message));
       return sendJson(res, 202, { ok: true, note: '复盘任务已在后台启动' });
     }
-    if (p === '/api/health') return sendJson(res, 200, { ok: true, llm: llmConfigured() });
+    if (p === '/api/health') return sendJson(res, 200, { ok: true, llm: llmConfigured(), dataProvider: dataProviderStatus().provider });
+    if (p === '/api/data-provider') {
+      const st = dataProviderStatus();
+      if (req.method === 'GET') {
+        return sendJson(res, 200, {
+          ...st,
+          presets: Object.entries(PRESETS).map(([id, v]) => ({ id, label: v.label, free: Boolean(v.free), urlTemplate: v.base })),
+        });
+      }
+      if (req.method === 'POST') {
+        const b = await readBody(req);
+        const provider = String(b.provider ?? '').trim().toLowerCase();
+        const apiKey = String(b.apiKey ?? '').trim();
+        const urlTemplate = String(b.urlTemplate ?? '').trim();
+        const fieldMapRaw = String(b.fieldMap ?? '').trim();
+        if (provider && !PRESETS[provider]) return sendJson(res, 400, { ok: false, error: `未知数据源：${provider}（可选 ${Object.keys(PRESETS).join(' / ')}）` });
+        if (provider && PRESETS[provider] && !PRESETS[provider].base && !/^https?:\/\//i.test(urlTemplate)) {
+          return sendJson(res, 400, { ok: false, error: '自定义数据源需要填写 URL 模板（含 {appid} 占位符）' });
+        }
+        if (urlTemplate && !/^https?:\/\//i.test(urlTemplate)) return sendJson(res, 400, { ok: false, error: 'URL 模板需以 http:// 或 https:// 开头' });
+        if (fieldMapRaw) {
+          try { JSON.parse(fieldMapRaw); } catch { return sendJson(res, 400, { ok: false, error: '字段映射需为合法 JSON，例如 {"reviews":"reviews.total","owners":"owners"}' }); }
+        }
+        if (provider && provider !== 'custom' && !apiKey && !PRESETS[provider].free && !CONFIG.data.apiKey) {
+          return sendJson(res, 400, { ok: false, error: `${PRESETS[provider].label} 需要 API Key` });
+        }
+        const prev = { ...CONFIG.data };
+        CONFIG.data.provider = provider;
+        CONFIG.data.apiKey = apiKey || (provider === prev.provider ? prev.apiKey : '') || (PRESETS[provider]?.free ? '' : prev.apiKey);
+        CONFIG.data.urlTemplate = urlTemplate;
+        CONFIG.data.fieldMap = fieldMapRaw;
+        let test = null;
+        if (provider && b.test !== false) {
+          try {
+            const s = await providerGameStats({ appid: String(b.testAppid || 413150), name: 'Stardew Valley' }, null);
+            if (s) test = { ok: true, sample: s };
+            else { test = { ok: false, error: '数据源没有返回可识别的字段（检查 URL 模板与字段映射）' }; Object.assign(CONFIG.data, prev); return sendJson(res, 400, { ok: false, error: `测试失败：${test.error}`, test }); }
+          } catch (e) {
+            test = { ok: false, error: String(e.message || e).slice(0, 300) };
+            Object.assign(CONFIG.data, prev);
+            return sendJson(res, 400, { ok: false, error: `数据源测试失败：${test.error}`, test });
+          }
+        }
+        try {
+          saveEnvFile(path.join(CONFIG.rootDir, '.env'), {
+            DATA_PROVIDER: provider,
+            DATA_PROVIDER_KEY: CONFIG.data.apiKey || '',
+            DATA_PROVIDER_URL: urlTemplate,
+            DATA_PROVIDER_MAP: fieldMapRaw,
+          });
+        } catch (e) {
+          return sendJson(res, 500, { ok: false, error: `配置已在本次运行生效，但写入 .env 失败：${e.message}` });
+        }
+        return sendJson(res, 200, { ok: true, ...dataProviderStatus(), test });
+      }
+      return sendJson(res, 405, { error: 'Method Not Allowed' });
+    }
     if (p === '/api/llm-config') {
       const mask = (k) => (k ? `${k.slice(0, 6)}…${k.slice(-4)}` : '');
       if (req.method === 'GET') {

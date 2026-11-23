@@ -87,6 +87,7 @@ node scripts/build_standalone.mjs      # 重新生成单文件版 index.html
 | `kb_search` / `kb_list` / `kb_stats` / `kb_add_insight` | 本地知识库检索/列/统计/写入 | `query`、`category`、`content` |
 | `project_list` / `project_report` | 项目档案列表 / 读取某项目评估报告全文 | `name`（模糊匹配） |
 | `evaluate_project` | 评估引擎（六维评分+工期+窗口，写入档案） | `name`、`genre`、`description`、`competitors[]`、`releases_by_year`、`upcoming_count` 等 |
+| *(可选)* 第三方数据源 | 非工具，而是评估流水线内的适配层：配置 `DATA_PROVIDER` 后，官方接口缺失的字段（拥有者/销量近似/在线）由该源补齐，报告注明来源 | `.env` 的 `DATA_PROVIDER` / `_KEY` / `_URL` / `_MAP`；接口 `GET|POST /api/data-provider` |
 
 ## 数据与存储（全部本地）
 
@@ -111,7 +112,7 @@ data/scout.db  ← SQLite
 
 ## 已知限制与注意事项
 
-- SteamSpy / SteamDB 被 Cloudflare 拦截（已改用官方 API + 商店搜索页 + SteamCharts）
+- SteamSpy / SteamDB 被 Cloudflare 拦截 → 默认**不依赖**它们（官方 API + 商店搜索页 + SteamCharts）；如用户自备付费数据源 Key，通过适配层接入（见工具清单末行），失败只报告不阻塞
 - B 站有风控：`-412`(HTTP 412) / `-352`(risk) / `-799`(请求过于频繁) 已内置重试与冷却；仍有概率失败，播放数据可降级
 - Steam 商店接口在连续高频请求下会临时限流（已内置缓存 10 分钟 + 多级重试）
 - 未配置 LLM 时：离线评估/数据采集可用，对话推理不可用

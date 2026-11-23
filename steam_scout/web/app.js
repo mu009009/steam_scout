@@ -765,6 +765,62 @@
       $('#cfg-key').value = '';
       $('#cfg-key').placeholder = c.apiKeyMasked ? `已保存：${c.apiKeyMasked}（留空保持不变）` : 'sk-…';
     } catch {}
+    loadDataProvider();
+  }
+  // ---------- 可选第三方/付费数据源 ----------
+  async function loadDataProvider() {
+    const sel = $('#dp-provider');
+    if (!sel) return;
+    try {
+      const d = await (await fetch('/api/data-provider')).json();
+      sel.value = d.provider || '';
+      if ($('#dp-key')) {
+        $('#dp-key').value = '';
+        $('#dp-key').placeholder = d.hasKey ? `已保存：${d.apiKeyMasked}（留空保持不变）` : '付费源需要填写；SteamSpy 免费可留空';
+      }
+      const isCustom = (d.provider || '') === 'custom';
+      if ($('#dp-url')) $('#dp-url').value = isCustom ? (d.urlTemplate || '') : '';
+      if ($('#dp-map')) $('#dp-map').value = isCustom && d.fieldMap && Object.keys(d.fieldMap || {}).length ? JSON.stringify(d.fieldMap) : '';
+      const res = $('#dp-result');
+      if (res) { res.style.color = 'var(--muted)'; res.textContent = d.configured ? `当前：${d.label}${d.hasKey ? '（已存 Key）' : ''} —— 评估时会用该源补齐缺失字段` : '当前未启用数据源：仅使用 Steam 官方接口'; }
+    } catch {}
+  }
+  async function saveDataProvider() {
+    const res = $('#dp-result');
+    const btn = $('#dp-save');
+    if (!res || !btn) return;
+    res.style.color = 'var(--muted)';
+    res.textContent = '正在测试数据源…';
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/data-provider', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: $('#dp-provider').value,
+          apiKey: $('#dp-key').value.trim(),
+          urlTemplate: $('#dp-url').value.trim(),
+          fieldMap: $('#dp-map').value.trim(),
+          test: true,
+        }),
+      });
+      const j = await r.json();
+      if (j.ok) {
+        res.style.color = 'var(--accent2)';
+        res.textContent = j.provider
+          ? `✅ 已保存并测试通过：${j.label}${j.test?.sample?.owners ? `（样本拥有者 ${j.test.sample.owners}）` : ''}，已写入 .env`
+          : '✅ 已关闭第三方数据源，评估仅使用 Steam 官方接口';
+        toast(j.provider ? `✅ 数据源：${j.label}` : '✅ 已关闭第三方数据源');
+      } else {
+        res.style.color = 'var(--danger)';
+        res.textContent = `❌ ${j.error || '保存失败'}`;
+      }
+    } catch (e) {
+      res.style.color = 'var(--danger)';
+      res.textContent = `❌ 请求失败：${e.message}`;
+    } finally {
+      btn.disabled = false;
+    }
   }
   function closeLlmConfig() {
     $('#cfg-mask')?.classList.add('hidden');
@@ -850,6 +906,16 @@
   $('#cfg-close').onclick = closeLlmConfig;
   $('#cfg-cancel').onclick = closeLlmConfig;
   $('#cfg-save').onclick = saveLlmConfig;
+  if ($('#dp-save')) $('#dp-save').onclick = saveDataProvider;
+  if ($('#dp-provider')) $('#dp-provider').onchange = () => {
+    const v = $('#dp-provider').value;
+    const res = $('#dp-result');
+    if (v !== 'custom') { if ($('#dp-url')) $('#dp-url').value = ''; if ($('#dp-map')) $('#dp-map').value = ''; }
+    if (res && ['steamspy', 'steamapi', ''].includes(v)) {
+      res.style.color = 'var(--muted)';
+      res.textContent = v === '' ? '保存后即关闭第三方数据源' : '该源免费、无需 Key；选好后点「保存并测试数据源」';
+    }
+  };
   $('#guide-mask').onclick = (e) => { if (e.target.id === 'guide-mask') closeGuide(); };
   $('#inv-mask').onclick = (e) => { if (e.target.id === 'inv-mask') closeInventory(); };
   $('#cfg-mask').onclick = (e) => { if (e.target.id === 'cfg-mask') closeLlmConfig(); };

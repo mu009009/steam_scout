@@ -470,6 +470,20 @@ footer { border-top: 1px solid var(--border); padding-top: 8px; }
   outline: none;
 }
 .field input:focus { border-color: var(--accent); }
+.field select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.field select:focus { border-color: var(--accent); }
+details.cfg-adv { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 10px; }
+details.cfg-adv > summary { cursor: pointer; font-size: 13px; color: #9fb4d8; user-select: none; }
+details.cfg-adv[open] > summary { margin-bottom: 6px; }
 
 @media (max-width: 900px) {
   #sidebar { display: none; }

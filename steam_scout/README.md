@@ -31,6 +31,7 @@
 | 🗂 本地整理 | SQLite 知识库 + 中文倒排索引检索；多对话管理（新建/切换/删除）；项目档案（删除 / **导出 PDF** / **输出评估结论**）；全部本地存档（**完整版**）；单文件版用浏览器 localStorage |
 | 🧠 学习进化 | 调研结论自动提炼沉淀；每日市场复盘（热销榜变动+新闻+UP 主新视频）；自动调研队列；👍👎 反馈（**完整版**） |
 | 📊 立项评估 | 六维市场潜力评分（0-100，带**数据状态标注**与**数据缺口说明**）+ 开发周期三档估算 + 上线窗口评级 + 情景预案 + 季度检查信号 |
+| 🔌 可选数据源 | 支持接入第三方/付费数据源（Steam 官方 Web API 免费 / SteamSpy / Gamalytic / VG Insights / Steambase / **自定义 URL+字段映射**）：**选哪个源就用那个源的数据**补齐官方接口缺失的销量·拥有者·在线字段，报告里注明来源（默认不接，零成本可用） |
 
 ## 🚀 快速开始（完整版）
 
@@ -53,6 +54,20 @@ node src\ingest\seed.mjs
 
 任何 **OpenAI 兼容**服务都可（DeepSeek / OpenAI / 智谱 / 通义 / Kimi / SiliconFlow / 本地 Ollama）。
 未配置 LLM 时仍可用：离线立项评估、数据采集、知识库检索、项目档案、数据盘点。
+
+**可选：接第三方 / 付费数据源**（想要销量/收入/拥有者估算时）
+「⚙️ 配置 LLM API」弹窗里展开「🔌 可选：第三方 / 付费数据源」→ 选源 + 填 Key → 「保存并测试数据源」；或直接写 `.env`：
+
+```ini
+DATA_PROVIDER=gamalytic          # steamapi(免费) / steamspy(免费) / gamalytic / vginsights / steambase / custom
+DATA_PROVIDER_KEY=你的key
+DATA_PROVIDER_URL=               # 自定义时填，支持 {appid} / {name}
+DATA_PROVIDER_MAP=               # 自定义时填，如 {"owners":"owners","reviews":"reviews.total"}
+```
+
+规则很简单：**官方接口优先，缺什么才用你选的源补什么**（价格/好评率/中文支持永远取自 Steam 官方）；
+报告首页会写明 `补充数据源 XXX` 并注明哪些字段由它补充；数据源挂了/Key 失效只在过程中提示一行，不阻塞评估。
+详见 `docs/配置指南.md`。
 
 > 📚 文档：`SKILL.md` = Agent 能力规格（Claude Skill 格式，可交给其他 Agent 使用）；`AGENTS.md` = 给 AI 编码 Agent 的仓库操作指南；`docs/交互流程.md` = 交互流程与问题排查；`docs/配置指南.md` = LLM 配置与分享说明。
 
@@ -152,7 +167,8 @@ steam-market-agent/
 
 - **B 站接口被风控？** 已内置 wbi 签名、浏览器指纹头、限速与自动重试；若持续被拦，稍等几小时再跑，或只影响视频字幕抓取（不影响 Steam 数据）。
 - **不想用 DeepSeek？** 任意 OpenAI 兼容服务均可：改 `.env` 的 `LLM_BASE_URL` / `LLM_MODEL`（如通义、智谱、Kimi、本地 Ollama `http://127.0.0.1:11434/v1`）。
-- **SteamSpy/SteamDB 被 Cloudflare 拦截？** 已改用 Steam 官方接口 + 搜索页 + SteamCharts，数据更实时。
+- **SteamSpy/SteamDB 被 Cloudflare 拦截？** 本工具默认**不依赖**它们（用 Steam 官方接口 + 搜索页 + SteamCharts）。想额外要销量/拥有者数据，可接第三方付费 API（见上文「可选：接第三方 / 付费数据源」）；SteamDB 自己封爬虫与你无关，别把它的验证页怪到本工具头上。
+- **数据源填了 key 却报「调用失败」？** 看提示原因：Cloudflare 人机验证 = 该源不让服务器直连；401/403 = key 无效或额度用尽；不是 JSON = URL 模板/路径不对。评估不会因此中断，只是回到官方数据。
 - **重置知识库？** 停服后删除 `data/` 目录，重新播种即可。
 
 ## ⚠️ 免责声明

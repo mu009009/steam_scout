@@ -1,0 +1,20 @@
+# 依赖/构建产物
+node_modules/
+*.log
+
+# 本地配置与密钥（绝不提交）
+.env
+.env.local
+*.key
+
+# SQLite 运行时文件（scout.db 本体保留，作为内置知识库）
+*.db-wal
+*.db-shm
+*.db-journal
+
+# 分享包与临时文件
+steamscout-share-*.zip
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db

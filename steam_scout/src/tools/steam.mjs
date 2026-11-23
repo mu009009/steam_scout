@@ -6,8 +6,11 @@ const BASE = 'https://store.steampowered.com';
 
 // ---------- 底层能力 ----------
 
+// 商店接口快速失败参数（被限流时避免长时间挂起）
+const FAST = { timeoutMs: 12000, retries: 2 };
+
 export async function appDetails(appid) {
-  const j = await fetchJson(`${BASE}/api/appdetails?appids=${appid}&cc=${CONFIG.steam.cc}&l=${CONFIG.steam.l}`);
+  const j = await fetchJson(`${BASE}/api/appdetails?appids=${appid}&cc=${CONFIG.steam.cc}&l=${CONFIG.steam.l}`, FAST);
   const d = j[String(appid)]?.data;
   if (!d || !d.steam_appid) return { error: `未找到 appid ${appid}` };
   return {
@@ -30,7 +33,7 @@ export async function appDetails(appid) {
 }
 
 export async function appReviews(appid, lang = 'schinese') {
-  const j = await fetchJson(`${BASE}/appreviews/${appid}?json=1&language=${lang}&num_per_page=0&purchase_type=all&filter=summary`);
+  const j = await fetchJson(`${BASE}/appreviews/${appid}?json=1&language=${lang}&num_per_page=0&purchase_type=all&filter=summary`, FAST);
   const q = j.query_summary ?? {};
   return {
     appid,
@@ -42,7 +45,7 @@ export async function appReviews(appid, lang = 'schinese') {
 }
 
 export async function steamSearch(term, limit = 10) {
-  const j = await fetchJson(`${BASE}/api/storesearch/?term=${encodeURIComponent(term)}&cc=${CONFIG.steam.cc}&l=${CONFIG.steam.l}`);
+  const j = await fetchJson(`${BASE}/api/storesearch/?term=${encodeURIComponent(term)}&cc=${CONFIG.steam.cc}&l=${CONFIG.steam.l}`, FAST);
   const items = (j.items ?? []).slice(0, limit).map((it) => ({
     appid: it.id,
     name: it.name,
@@ -53,19 +56,50 @@ export async function steamSearch(term, limit = 10) {
 }
 
 export async function steamCharts(appid) {
-  const { text } = await fetchText(`https://steamcharts.com/app/${appid}`);
+  const { text } = await fetchText(`https://steamcharts.com/app/${appid}`, { timeoutMs: 15000, retries: 2 });
   const nums = [...text.matchAll(/<span class="num">([\d,]+)<\/span>/g)].map((m) => parseInt(m[1].replace(/,/g, ''), 10));
   return { appid, currentPlayers: nums[0] ?? null, peak24h: nums[1] ?? null, allTimePeak: nums[2] ?? null };
 }
 
 export async function appTags(appid) {
-  const { text } = await fetchText(`${BASE}/app/${appid}/?l=${CONFIG.steam.l}`, { timeoutMs: 40000 });
+  const { text } = await fetchText(`${BASE}/app/${appid}/?l=${CONFIG.steam.l}`, { timeoutMs: 20000, retries: 2 });
   const m = text.match(/<div class="glance_tags popular_tags"[\s\S]*?<\/div>\s*<\/div>/);
   if (!m) return [];
   const tags = [...m[0].matchAll(/class="app_tag"[^>]*>([\s\S]*?)<\/a>/g)]
     .map((x) => decodeEntities(htmlToText(x[1], 60)).trim())
     .filter(Boolean);
   return tags;
+}
+
+/** 按名称核对一款 Steam 游戏（名称 → appid/标签/价格/评价），避免把新游名误判成"品类" */
+export async function gameLookup(name, emit = null) {
+  const norm = (s) => String(s).toLowerCase().replace(/[\s:：·\-—_®™'"“”]/g, '');
+  const base = await steamSearch(name, 6);
+  const target = norm(name);
+  const hit = (base.items ?? []).find((it) => {
+    const n = norm(it.name);
+    return n === target || n.includes(target) || target.includes(n);
+  });
+  if (!hit) return { query: name, found: false, candidates: (base.items ?? []).slice(0, 3).map((i) => i.name) };
+  const [detail, tags, reviews] = await Promise.all([
+    appDetails(hit.appid).catch(() => null),
+    appTags(hit.appid).catch(() => []),
+    appReviews(hit.appid).catch(() => null),
+  ]);
+  if (emit) emit({ type: 'status', text: `已核对 Steam：《${hit.name}》（appid ${hit.appid}，标签：${(tags ?? []).slice(0, 6).join('、') || '无'}）` });
+  return {
+    query: name,
+    found: true,
+    appid: hit.appid,
+    name: hit.name,
+    tags: tags ?? [],
+    price: detail?.price ?? null,
+    isFree: Boolean(detail?.isFree),
+    releaseDate: detail?.releaseDate ?? '',
+    reviews: reviews?.total ?? null,
+    positivePct: reviews?.total ? Math.round((reviews.positive / reviews.total) * 100) : null,
+    shortDescription: detail?.shortDescription ?? '',
+  };
 }
 
 // ---------- 标签 ----------
@@ -75,7 +109,7 @@ let tagsCacheAt = 0;
 
 export async function popularTags() {
   if (tagsCache && Date.now() - tagsCacheAt < 86400000) return tagsCache;
-  const j = await fetchJson(`https://store.steampowered.com/tagdata/populartags/${CONFIG.steam.l}`);
+  const j = await fetchJson(`https://store.steampowered.com/tagdata/populartags/${CONFIG.steam.l}`, FAST);
   const list = Array.isArray(j)
     ? j.filter((t) => t && t.tagid && t.name)
     : Object.entries(j?.tagid ?? {}).map(([tagid, name]) => ({ tagid, name }));
@@ -111,7 +145,7 @@ const tagNameCache = new Map();
 export async function tagNameById(tagid) {
   if (tagNameCache.has(tagid)) return tagNameCache.get(tagid);
   try {
-    const { text } = await fetchText(`${BASE}/search/results/?tags=${tagid}&l=${CONFIG.steam.l}&count=1`, { retries: 2, timeoutMs: 30000 });
+    const { text } = await fetchText(`${BASE}/search/results/?tags=${tagid}&l=${CONFIG.steam.l}&count=1`, { retries: 2, timeoutMs: 15000 });
     const m = text.match(new RegExp(`data-value="${tagid}"[^>]*>[\\s\\S]*?<span class="tab_label">([^<]+)</span>`));
     const name = m ? decodeEntities(m[1]).trim() : null;
     if (name) tagNameCache.set(tagid, name);
@@ -141,7 +175,7 @@ export async function storeSearch({ tagId = null, tagName = null, term = '', sor
     ...extra,
   });
   if (tag) params.set('tags', tag.tagid);
-  const { text } = await fetchText(`${BASE}/search/results/?${params.toString()}&infinite=1`, { timeoutMs: 40000 });
+  const { text } = await fetchText(`${BASE}/search/results/?${params.toString()}&infinite=1`, { timeoutMs: 18000, retries: 2 });
 
   // infinite=1 返回 JSON 包裹的转义 HTML；普通页面直接返回 HTML
   let html = text;
@@ -202,7 +236,7 @@ export async function storeSearch({ tagId = null, tagName = null, term = '', sor
 }
 
 export async function featuredCategories() {
-  const j = await fetchJson(`${BASE}/api/featuredcategories/?cc=${CONFIG.steam.cc}&l=${CONFIG.steam.l}`);
+  const j = await fetchJson(`${BASE}/api/featuredcategories/?cc=${CONFIG.steam.cc}&l=${CONFIG.steam.l}`, FAST);
   const pick = (arr) =>
     (arr ?? []).slice(0, 15).map((it) => ({
       appid: it.id,
@@ -267,6 +301,12 @@ export const steamTools = [
     description: '获取某游戏的热门用户自定义标签。',
     parameters: { type: 'object', properties: { appid: { type: 'integer' } }, required: ['appid'] },
     handler: async (a) => appTags(a.appid),
+  },
+  {
+    name: 'steam_game_lookup',
+    description: '按**游戏名称**核对 Steam 游戏：返回 appid / 官方名 / 用户标签 / 价格 / 评价数 / 好评率。用户提到具体游戏名（如《幸存者笔记》）时先用它核对，避免把新游名误判成"品类"；查不到要如实说查不到，不要猜品类。',
+    parameters: { type: 'object', properties: { name: { type: 'string', description: '游戏名称（中文或英文）' } }, required: ['name'] },
+    handler: async (a, ctx) => gameLookup(a.name, ctx?.emit ?? null),
   },
   {
     name: 'steam_featured',

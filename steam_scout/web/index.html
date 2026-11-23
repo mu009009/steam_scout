@@ -89,6 +89,29 @@
           <button class="btn ghost" id="cfg-cancel" style="width:auto;padding:8px 18px">取消</button>
         </div>
         <div id="cfg-result" class="tiny" style="margin-top:10px"></div>
+        <details class="cfg-adv">
+          <summary>🔌 可选：第三方 / 付费数据源（补充销量·拥有者·在线估算）</summary>
+          <p class="tiny" style="margin:8px 0">默认<b>不启用</b>：只用 Steam 官方接口 + SteamCharts，无需任何 Key。选定哪个数据源，评估就用<b>那个源的数据</b>补齐官方接口缺失的字段（拥有者/销量近似/在线），报告里会注明数据来源。</p>
+          <label class="field"><span>数据源</span>
+            <select id="dp-provider">
+              <option value="">不启用（默认：仅官方接口）</option>
+              <option value="steamapi">Steam 官方 Web API（免费，无需 Key，只给在线人数）</option>
+              <option value="steamspy">SteamSpy（免费，可能被 Cloudflare 拦）</option>
+              <option value="gamalytic">Gamalytic（付费）</option>
+              <option value="vginsights">VG Insights（付费）</option>
+              <option value="steambase">Steambase（付费）</option>
+              <option value="custom">自定义（URL 模板 + 字段映射）</option>
+            </select>
+          </label>
+          <label class="field"><span>数据源 API Key（免费源可留空）</span><input id="dp-key" type="password" placeholder="留空 = 保持已保存的 Key 不变" autocomplete="off"></label>
+          <label class="field"><span>URL 模板（可选，留空用预设；支持 {appid} 占位符）</span><input id="dp-url" placeholder="https://api.example.com/game/{appid}"></label>
+          <label class="field"><span>字段映射 JSON（可选）</span><input id="dp-map" placeholder='{"reviews":"reviews.total","owners":"owners","peak24h":"ccu"}'></label>
+          <div class="row" style="gap:8px;margin-top:8px">
+            <button class="btn ghost" id="dp-save" style="width:auto;padding:6px 14px">保存并测试数据源</button>
+          </div>
+          <div id="dp-result" class="tiny" style="margin-top:6px"></div>
+          <p class="tiny" style="margin-top:8px">提示：SteamSpy 免费但数据粒度粗（拥有者区间）；付费源（Gamalytic / VG Insights / Steambase）能给到销量与收入估算。也可不填，用官方 Steam Web API（免费申请 Key）自行接。</p>
+        </details>
         <p class="tiny" style="margin-top:12px">常见配置：<br>
           • DeepSeek → <code>https://api.deepseek.com</code>，模型 <code>deepseek-chat</code> 或 <code>deepseek-flash</code>（platform.deepseek.com 注册）<br>
           • 其他厂商（OpenAI / 智谱 / 通义 / Kimi / SiliconFlow）→ 填各自的 OpenAI 兼容地址与模型名<br>
@@ -145,6 +168,7 @@
           <tr><td>中文显示乱码</td><td><b>Ctrl+F5 强制刷新</b>；并确认访问的是本工具（<code>/api/health</code> 返回 <code>{"ok":true,"llm":true}</code>）</td></tr>
           <tr><td>一直"正在调研"</td><td>Steam / B站限流，等 30~60 秒重试；工具标签会显示失败原因</td></tr>
           <tr><td>想换模型</td><td>改 <code>.env</code> 的 <code>LLM_BASE_URL</code> / <code>LLM_MODEL</code></td></tr>
+          <tr><td>想要销量/拥有者数据</td><td>可选接第三方付费源：「⚙️ 配置 LLM API」→ 展开「🔌 第三方 / 付费数据源」→ 选源 + 填 Key → 保存并测试。<b>不接也能用</b>；接了就用那个源的数据补官方缺的字段，报告会注明来源</td></tr>
         </table>
         <p class="tiny">生成期间可以继续在输入框打草稿（不会丢），发送会提示等待完成。完整流程文档见项目内 <code>docs/交互流程.md</code>，Agent 规格见 <code>SKILL.md</code>。</p>
       </div>

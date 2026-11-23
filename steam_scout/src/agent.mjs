@@ -5,9 +5,10 @@ import { TOOLS, toolDefs, runTool } from './tools/index.mjs';
 import { addConv, recentConvs, addInsight, counts, setMeta, upsertProject, addEvaluation } from './db.mjs';
 import { search, invalidate } from './retriever.mjs';
 import { runEvaluation, estimateDevTime } from './evaluator.mjs';
-import { storeSearch, appDetails, appReviews, steamCharts, featuredCategories, popularTags, topTagIdFromRows, tagNameById } from './tools/steam.mjs';
+import { storeSearch, appDetails, appReviews, steamCharts, featuredCategories, popularTags, topTagIdFromRows, tagNameById, steamSearch, appTags } from './tools/steam.mjs';
 import { searchVideos } from './tools/bilibili.mjs';
 import { bingSearch } from './tools/websearch.mjs';
+import { dataProviderStatus, enrichCompetitors } from './tools/paid-data.mjs';
 import { truncate, safeJsonParse, parseJsonLoose, sleep } from './util.mjs';
 import { cacheGet, cacheSet } from './research-cache.mjs';
 
@@ -26,13 +27,16 @@ export const SYSTEM_PROMPT = `你是「Steam 市场侦察兵」——一名专�
 7. 工具结果可能被截断，属正常现象，必要时换参数再查。
 8. 用户问"值不值得做/要多久/立项"时：先收集品类竞品数据（steam_store_search 的 released_desc/topselling/coming_soon 三个视角 + 竞品详情与在线 + 搜索趋势），再调用 evaluate_project 引擎出评分报告。
 9. 本地项目档案：用 project_list 查看已评估项目，用 project_report 读取某项目的评估报告全文。用户说「输出项目X的评估结论」（或「回顾/查看项目X的报告」）时，必须先用 project_report 读到报告，再复述关键结论（评分/窗口/工期/建议），不要凭记忆猜测，也不要重新跑一次立项评估。
-10. 工具调用要克制：一轮对话总调用次数有限（约 14 次），优先查最关键的数据，不要在同类查询上反复试探。`;
+10. 工具调用要克制：一轮对话总调用次数有限（约 14 次），优先查最关键的数据，不要在同类查询上反复试探。
+11. **提到具体游戏名时必须先核对**：用户说到某款游戏（如《幸存者笔记》）时，先用工具 steam_game_lookup 查证它的真实名称/标签/价格/评价；查到了就按标签判断品类，**查不到就明确说"Steam 上没查到这款游戏"**，并询问用户它的品类（给出几个候选），**绝对不要把游戏名猜成某个品类**（例如把"幸存者笔记"当成"幸存者like"）。`;
 
 function detectMode(text) {
   const t = String(text).trim();
   // 读取档案类请求（输出/回顾/查看项目…结论、报告）走普通对话 + project_report 工具，绝不能触发新评估
   const archiveLookup = /(输出|回顾|查看|读取|展示|给我|导出).{0,12}(项目|档案)/.test(t) && /(结论|报告|评估结果|评估记录)/.test(t);
   if (archiveLookup) return 'chat';
+  // 用户明确补充"品类/类型"（常见于澄清后的追问）→ 走评估
+  if (/^(品类|类型|分类|赛道|genre|类型是|品类是)\s*[:：]?/i.test(t)) return 'eval';
   if (/评估|立项|值不值得|能不能做|值多少|做多久|多久.{0,6}(做|完成|开发|上线)|市场潜力|时机|可行性|可不可以做|还能.{0,6}(进场|入场|做)|红海|饱和|值不值得做/.test(t)) return 'eval';
   return 'chat';
 }
@@ -103,12 +107,59 @@ function buildSuggestions(mode, ctx = {}) {
 }
 
 // ---------- 立项评估流水线 ----------
-async function parseBrief(text) {
+/** 从文本中提取可能的具体游戏名（《…》/「…」/引号） */
+function extractGameTitles(text) {
+  const out = [];
+  for (const m of String(text).matchAll(/《([^》]{2,40})》/g)) out.push(m[1].trim());
+  for (const m of String(text).matchAll(/「([^」]{2,40})」/g)) out.push(m[1].trim());
+  for (const m of String(text).matchAll(/["“]([^"”\n]{2,40})["”]/g)) out.push(m[1].trim());
+  return [...new Set(out)].filter(Boolean);
+}
+
+/** 在 Steam 上核对一个"游戏名"，返回匹配结果或 null（避免把新游误判成品类） */
+async function lookupSteamGame(name, emit) {
+  try {
+    const norm = (s) => String(s).toLowerCase().replace(/[\s:：·\-—_®™'"“”]/g, '');
+    const r = await steamSearch(name, 6);
+    const target = norm(name);
+    const hit = (r.items ?? []).find((it) => {
+      const n = norm(it.name);
+      return n === target || n.includes(target) || target.includes(n);
+    });
+    if (!hit) return { query: name, found: false, candidates: (r.items ?? []).slice(0, 3).map((i) => i.name) };
+    const [detail, tags] = await Promise.all([
+      appDetails(hit.appid).catch(() => null),
+      appTags(hit.appid).catch(() => []),
+    ]);
+    const reviews = await appReviews(hit.appid).catch(() => null);
+    const genreTags = (tags ?? []).filter((t) => GENRE_TAG_CANDIDATES.some((g) => t.toLowerCase().includes(g.toLowerCase()) || g.toLowerCase().includes(t.toLowerCase())));
+    if (emit) emit({ type: 'status', text: `已识别游戏《${hit.name}》（Steam appid ${hit.appid}，标签：${(tags ?? []).slice(0, 6).join('、') || '无'}）` });
+    return {
+      query: name,
+      found: true,
+      appid: hit.appid,
+      name: hit.name,
+      tags: tags ?? [],
+      genreTags,
+      price: detail?.price ?? null,
+      isFree: Boolean(detail?.isFree),
+      releaseDate: detail?.releaseDate ?? '',
+      reviews: reviews?.total ?? null,
+      positivePct: reviews?.total ? Math.round((reviews.positive / reviews.total) * 100) : null,
+      shortDescription: detail?.shortDescription ?? '',
+    };
+  } catch (e) {
+    return { query: name, found: false, error: String(e.message || e) };
+  }
+}
+
+async function parseBrief(text, context = '') {
+  const ctx = context ? `\n\n【对话上下文（用于理解指代/补充信息）】\n${truncate(context, 1200)}` : '';
   if (llmConfigured()) {
     try {
-      const sys = '你是游戏立项信息提取助手。从用户描述提取 JSON：{"name","genre","description","dimension","scope","team_size","experience"}。genre 用中文品类名（如 肉鸽卡牌/模拟经营/幸存者like/2D平台跳跃/3D动作）；dimension 填 2D 或 3D；scope 填 小型/中型/大型；team_size 为数字；experience 填 新手/有经验/资深。未提及给默认值。只输出 JSON。';
+      const sys = '你是游戏立项信息提取助手。从用户描述提取 JSON：{"name","genre","description","dimension","scope","team_size","experience"}。genre 用中文品类名（如 肉鸽卡牌/模拟经营/幸存者like/2D平台跳跃/3D动作）；dimension 填 2D 或 3D；scope 填 小型/中型/大型；team_size 为数字；experience 填 新手/有经验/资深。**如果用户没说品类或说得含糊，genre 留空字符串，不要瞎猜。** 未提及的其它字段给默认值。只输出 JSON。';
       const r = await chat({
-        messages: [{ role: 'system', content: sys }, { role: 'user', content: text }],
+        messages: [{ role: 'system', content: sys }, { role: 'user', content: text + ctx }],
         temperature: 0,
         onReasoning: (t) => emit({ type: 'reasoning', text: t }),
       });
@@ -116,7 +167,7 @@ async function parseBrief(text) {
       if (j && typeof j === 'object') {
         return {
           name: j.name || '未命名项目',
-          genre: j.genre || '中型独立游戏',
+          genre: j.genre || '',
           description: j.description || text.slice(0, 300),
           dimension: j.dimension || '',
           scope: j.scope || '',
@@ -169,20 +220,20 @@ function parseReleaseTs(s) {
   return y ? new Date(Number(y[0]), 0, 1).getTime() : null;
 }
 
-// Steam 搜索缓存（10 分钟，进程内）+ 高级重试（应对商店接口的限流波动）
+// Steam 搜索缓存（10 分钟，进程内）+ 快速失败（Steam 限流时最多 2 次尝试）
 async function storeSearchCached(params) {
   const key = JSON.stringify(params);
   const hit = cacheGet(key);
   if (hit) return hit;
   let lastErr;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     try {
       const r = await storeSearch(params);
       cacheSet(key, r);
       return r;
     } catch (e) {
       lastErr = e;
-      if (i < 2) await sleep(4000 * (i + 1));
+      if (i < 1) await sleep(2500);
     }
   }
   throw lastErr;
@@ -197,8 +248,13 @@ async function popularTagsRetry() {
 }
 
 async function researchMarket(brief, emit) {
-  const research = { genre: brief.genre, competitors: [], releasesByYear: {}, upcomingCount: null, articles: [], videos: [], kb: [], topGameAgeMonths: null, chineseShare: null, tagName: null };
+  const research = { genre: brief.genre, competitors: [], releasesByYear: {}, upcomingCount: null, articles: [], videos: [], kb: [], topGameAgeMonths: null, chineseShare: null, tagName: null, dataSource: null };
   const step = (text) => emit({ type: 'status', text });
+  // 总时间预算：Steam 被限流时避免把用户挂几分钟；超预算就带着已有数据进入评分（报告会标注缺口）
+  const deadline = Date.now() + 90_000;
+  const overBudget = () => Date.now() > deadline;
+  let skipped = 0;
+  const skipNote = (what) => { skipped++; step(`⏱️ 数据采集超时（Steam 可能限流），跳过${what}，本次评分将标注数据缺口`); };
 
   // 1. 品类标签定位：品类标签 > 关键词反推 > 泛标签兜底
   step(`正在定位品类标签…`);
@@ -249,8 +305,10 @@ async function researchMarket(brief, emit) {
   // 2. 新游发行趋势（最多 300 条，按年聚合）
   step(tag ? `正在拉取「${tag.name}」品类新游发行数据…` : '正在拉取新游发行数据…');
   let releaseRows = [];
-  try {
+  if (overBudget()) { skipNote('新游发行数据'); }
+  else try {
     for (let page = 0; page < 3 && releaseRows.length < 300; page++) {
+      if (overBudget()) break;
       const r = await storeSearchCached({ tagId: tag?.tagid, term: termFallback, sort: 'released_desc', limit: 100, page });
       releaseRows.push(...r.rows);
       if (r.rows.length < 100) break;
@@ -271,12 +329,15 @@ async function researchMarket(brief, emit) {
   // 3. 热销竞品详情
   step('正在获取热销竞品详情与在线数据…');
   let topRows = [];
-  try {
-    const r = await storeSearchCached({ tagId: tag?.tagid, term: termFallback, sort: 'topselling', limit: 30 });
-    topRows = r.rows;
-  } catch {}
+  if (!overBudget()) {
+    try {
+      const r = await storeSearchCached({ tagId: tag?.tagid, term: termFallback, sort: 'topselling', limit: 30 });
+      topRows = r.rows;
+    } catch {}
+  } else skipNote('热销竞品列表');
   const topCandidates = topRows.filter((r) => r.appid).slice(0, 6);
   for (const row of topCandidates) {
+    if (overBudget()) break;
     try {
       const detail = await appDetails(row.appid).catch(() => null);
       if (!detail || detail.error) continue;
@@ -307,6 +368,27 @@ async function researchMarket(brief, emit) {
   for (const c of research.competitors.slice(0, 3)) {
     try { const ch = await steamCharts(c.appid); c.peak24h = ch.peak24h; } catch {}
   }
+  // 3.5 可选第三方/付费数据源补充（只有配置了 DATA_PROVIDER 才走，只补官方接口缺失的字段）
+  const provStatus = dataProviderStatus();
+  if (provStatus.configured && research.competitors.length && !overBudget()) {
+    step(`正在用数据源「${provStatus.label}」补充官方接口缺失的字段（拥有者/在线/评价）…`);
+    try {
+      const r = await enrichCompetitors(research.competitors, emit, { maxCalls: 6, budgetMs: 25000 });
+      if (r.sourceUsed) {
+        research.dataSource = r.sourceUsed;
+        step(`数据源「${r.sourceUsed}」补充完成：${research.competitors.filter((c) => c.dataSource).length} 款竞品拿到补充数据`);
+        emit({ type: 'tool', name: 'data_provider', status: 'end', summary: r.sourceUsed });
+      } else {
+        step(`数据源「${provStatus.label}」未返回有效数据（可能 key 无效/额度用尽），继续用官方接口数据`);
+        emit({ type: 'tool', name: 'data_provider', status: 'error', summary: '无有效返回' });
+      }
+    } catch (e) {
+      step(`⚠️ 数据源调用异常（${truncate(String(e.message || e), 60)}），继续用官方接口数据`);
+      emit({ type: 'tool', name: 'data_provider', status: 'error', summary: truncate(String(e.message || e), 150) });
+    }
+  } else if (provStatus.configured && !research.competitors.length) {
+    step('（未取到竞品基础数据，跳过第三方数据源补充）');
+  }
   const zhTotal = research.competitors.filter((c) => c.chineseSupported != null).length;
   research.chineseShare = zhTotal ? research.competitors.filter((c) => c.chineseSupported).length / zhTotal : null;
   if (research.competitors.length) {
@@ -333,16 +415,19 @@ async function researchMarket(brief, emit) {
   }
 
   // 4. 即将上线竞品
-  try {
-    const up = await storeSearchCached({ tagId: tag?.tagid, term: termFallback, sort: 'coming_soon', limit: 50 });
-    research.upcomingCount = up.total ?? up.count;
-  } catch {}
+  if (!overBudget()) {
+    try {
+      const up = await storeSearchCached({ tagId: tag?.tagid, term: termFallback, sort: 'coming_soon', limit: 50 });
+      research.upcomingCount = up.total ?? up.count;
+    } catch {}
+  } else skipNote('即将上线数量');
   step(research.upcomingCount != null ? `已采集即将上线竞品 ${research.upcomingCount} 款` : '⚠️ 即将上线竞品数量未获取到（已记入数据缺口）');
 
   // 5. 网络情报
   step('正在搜索行业趋势与评测热度…');
   const webQueries = [`${brief.genre} Steam 游戏 2026 趋势 爆款`, `${brief.genre} 独立游戏 市场分析 立项`];
   for (const q of webQueries) {
+    if (overBudget()) break;
     try {
       const r = await bingSearch(q, 5);
       research.articles.push(...r.results);
@@ -368,9 +453,11 @@ async function researchMarket(brief, emit) {
   if (research.articles.length) readiness.push(`行业情报 ${research.articles.length} 条`);
   if (research.videos.length) readiness.push(`B站评测 ${research.videos.length} 条`);
   if (research.kb.length) readiness.push(`知识库 ${research.kb.length} 条`);
+  if (research.dataSource) readiness.push(`补充数据源 ${research.dataSource}`);
   const weak = research.competitors.length < 3 || !releaseRows.length || research.upcomingCount == null;
+  if (skipped) step(`⏱️ 有 ${skipped} 个数据环节因超时被跳过，本次评分置信度降低（报告会标注缺口）`);
   step(`数据采集完成：${readiness.join(' ｜ ')}${weak ? ' ——部分数据缺失，本次评分置信度降低（报告「数据缺口说明」会标注）' : '（数据就绪）'}`);
-  research.readiness = { competitors: research.competitors.length, releases: releaseRows.length, upcoming: research.upcomingCount, articles: research.articles.length, videos: research.videos.length, kb: research.kb.length, weak };
+  research.readiness = { competitors: research.competitors.length, releases: releaseRows.length, upcoming: research.upcomingCount, articles: research.articles.length, videos: research.videos.length, kb: research.kb.length, dataSource: research.dataSource, weak };
   return research;
 }
 
@@ -407,12 +494,69 @@ async function narrate(brief, evalResult, research, emit) {
   return r.content;
 }
 
-async function runEvalMode(briefText, emit, session) {
+function buildClarify(brief, titles, notFound) {
+  const lines = [];
+  lines.push('## 需要先确认一下（避免把品类判断错）');
+  if (titles.length) {
+    lines.push(`我在 Steam 上**没能确认** ${titles.map((t) => `《${t}》`).join('、')} 这款游戏。新上线的游戏很容易被误判成某个"品类"（比如把名字误读成幸存者like），所以先跟你核对。`);
+  } else {
+    lines.push('你的描述里我**没识别出明确的品类**。为了拉到正确的赛道数据，先跟你核对。');
+  }
+  lines.push('');
+  lines.push('**① 这款游戏的品类是？**（直接回复品类名即可，可带团队/周期）');
+  lines.push('');
+  lines.push('`肉鸽卡牌` ｜ `幸存者like` ｜ `模拟经营` ｜ `2D 平台跳跃` ｜ `放置挂机` ｜ `塔防` ｜ `沙盒物理` ｜ `视觉小说` ｜ `3D 动作` ｜ `解谜`');
+  if (notFound.length) {
+    const cands = [...new Set(notFound.flatMap((x) => x.candidates ?? []))].slice(0, 3);
+    if (cands.length) {
+      lines.push('');
+      lines.push('**② 如果它已经在 Steam 上，是不是下面某一款？**（回复准确名字，我再查一次）');
+      lines.push(cands.map((c, i) => `- ${c}`).join('\n'));
+    }
+  }
+  lines.push('');
+  lines.push('> 补一句就够，例如：「品类：肉鸽卡牌，2D，2人团队，计划12个月上线」——我会立刻跑完整评估。');
+  return {
+    text: lines.join('\n'),
+    suggestions: [
+      { type: 'message', label: '🏷️ 肉鸽卡牌', text: '品类：肉鸽卡牌' },
+      { type: 'message', label: '🏷️ 幸存者like', text: '品类：幸存者like' },
+      { type: 'message', label: '🏷️ 模拟经营', text: '品类：模拟经营' },
+      { type: 'message', label: '🏷️ 2D 平台跳跃', text: '品类：2D 平台跳跃' },
+    ],
+  };
+}
+
+async function runEvalMode(briefText, emit, session, context = '') {
   // 阶段横幅：让用户始终知道进度
   emit({ type: 'phase', index: 1, total: 4, text: '理解项目描述' });
   emit({ type: 'status', text: '正在理解项目描述…' });
-  const brief = await parseBrief(briefText);
-  emit({ type: 'status', text: `已识别：品类「${brief.genre}」｜团队 ${brief.teamSize} 人（${brief.experience}）` });
+  const brief = await parseBrief(briefText, context);
+
+  // 预检：文本里提到的具体游戏名，先去 Steam 核对（避免把新游名误当成品类）
+  const titles = extractGameTitles(briefText);
+  let gameHit = null;
+  const notFound = [];
+  for (const t of titles) {
+    const look = await lookupSteamGame(t, emit);
+    if (look?.found) { gameHit = look; break; }
+    if (look && !look.found) notFound.push({ query: t, candidates: look.candidates ?? [] });
+  }
+  if (gameHit) {
+    brief.name = gameHit.name;
+    if (gameHit.genreTags.length) brief.genre = gameHit.genreTags.slice(0, 3).join(' / ');
+    if (!brief.description || brief.description.length < 20) brief.description = gameHit.shortDescription || brief.description;
+    brief.game = { appid: gameHit.appid, tags: gameHit.tags.slice(0, 8), price: gameHit.price, reviews: gameHit.reviews, positivePct: gameHit.positivePct, releaseDate: gameHit.releaseDate };
+  } else {
+    const hasTitleLikeName = titles.length > 0;
+    const genreMissing = !brief.genre || brief.genre.trim().length < 2;
+    if (genreMissing || hasTitleLikeName) {
+      const q = buildClarify(brief, titles, notFound);
+      emit({ type: 'delta', text: q.text });
+      return { text: q.text, clarify: true, suggestions: q.suggestions, brief };
+    }
+  }
+  emit({ type: 'status', text: `已识别：品类「${brief.genre}」｜团队 ${brief.teamSize} 人（${brief.experience}）${gameHit ? `｜已在 Steam 核对：appid ${gameHit.appid}` : ''}` });
 
   emit({ type: 'phase', index: 2, total: 4, text: '采集 Steam 市场数据（品类新游/热销竞品/即将上线/行业趋势）' });
   const research = await researchMarket(brief, emit);
@@ -447,6 +591,7 @@ async function runEvalMode(briefText, emit, session) {
       devRange: [evalResult.dev.months.optimistic, evalResult.dev.months.pessimistic],
       completeness: evalResult.market.completeness,
       collected: research.readiness ?? null,
+      dataSource: research.dataSource ?? null,
     },
   });
   emit({ type: 'report', text: evalResult.report });
@@ -503,14 +648,20 @@ export async function runChat({ session = 'default', message, mode = null, emit 
   for (const h of history) messages.push({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content });
   messages.push({ role: 'user', content: message });
 
+  // 上下文（供追问/补充信息时理解指代）
+  const context = history.slice(-6).map((h) => `${h.role === 'user' ? '用户' : '助手'}：${truncate(h.content, 160)}`).join('\n');
+  // 如果上一轮是"需要确认品类"的提问，本轮回复按评估续跑处理
+  const lastAssistant = [...history].reverse().find((h) => h.role === 'assistant');
+  const lastMeta = safeJsonParse(lastAssistant?.meta ?? '{}', {});
+
   addConv(session, 'user', message);
-  const m = mode ?? detectMode(message);
+  const m = mode ?? (lastMeta.clarify ? 'eval' : detectMode(message));
 
   let finalText;
   let evalMeta = null;
   try {
     if (m === 'eval') {
-      evalMeta = await runEvalMode(message, emit, session);
+      evalMeta = await runEvalMode(message, emit, session, context);
       finalText = evalMeta.text;
     } else {
       emit({ type: 'status', text: llmConfigured() ? '正在思考（可调用 Steam/B站/搜索/知识库工具）…' : 'LLM 未配置，只能走离线模式…' });
@@ -530,8 +681,15 @@ export async function runChat({ session = 'default', message, mode = null, emit 
     throw e;
   }
 
-  const suggestions = buildSuggestions(m, { projectName: evalMeta?.projectName, genre: evalMeta?.genre, userMessage: message });
-  const convId = addConv(session, 'assistant', finalText, { mode: m, kb: counts().insights, suggestions });
+  const suggestions = evalMeta?.clarify
+    ? (evalMeta.suggestions ?? [])
+    : buildSuggestions(m, { projectName: evalMeta?.projectName, genre: evalMeta?.genre, userMessage: message });
+  const convId = addConv(session, 'assistant', finalText, {
+    mode: m,
+    kb: counts().insights,
+    suggestions,
+    clarify: Boolean(evalMeta?.clarify),
+  });
   emit({ type: 'done', convId, suggestions });
   // 异步沉淀本轮结论（不阻塞响应）
   if (llmConfigured() && finalText.length > 300 && m !== 'eval') {

@@ -281,15 +281,50 @@
     const sys = window.SYSTEM_PROMPT + STANDALONE_NOTE;
     ai.bubble.innerHTML = '<p class="pulse">🔎 正在解析项目并做定性评估（单文件模式，无实时数据）…</p>';
     scrollDown();
-    let brief = { name: '未命名项目', genre: '中型独立游戏', description: text.slice(0, 200), dimension: '2D', scope: '', teamSize: 1, experience: '有经验' };
+    let brief = { name: '未命名项目', genre: '', description: text.slice(0, 200), dimension: '2D', scope: '', teamSize: 1, experience: '有经验' };
     try {
       const r = await llmChat([
-        { role: 'system', content: '你是游戏立项信息提取助手。从用户描述提取 JSON：{"name","genre","description","dimension","scope","team_size","experience"}。genre 用中文品类名；dimension 填 2D 或 3D；scope 填 小型/中型/大型；team_size 数字；experience 填 新手/有经验/资深。未提及给默认值。只输出 JSON。' },
+        { role: 'system', content: '你是游戏立项信息提取助手。从用户描述提取 JSON：{"name","genre","description","dimension","scope","team_size","experience"}。genre 用中文品类名；dimension 填 2D 或 3D；scope 填 小型/中型/大型；team_size 数字；experience 填 新手/有经验/资深。**用户没说品类就把 genre 留空字符串，不要瞎猜。** 只输出 JSON。' },
         { role: 'user', content: text },
       ], { temperature: 0 });
       const j = JSON.parse(String(r.content).replace(/```json|```/g, '').trim());
       brief = { ...brief, ...j, teamSize: Math.max(1, Math.round(Number(j.team_size) || 1)) };
     } catch {}
+
+    // 预检：提到具体游戏名 / 没说品类 → 先问清楚（避免把新游名误判成品类）
+    const titles = [...String(text).matchAll(/《([^》]{2,40})》/g)].map((m) => m[1]);
+    const genreKnown = /肉鸽|卡牌|生存|模拟|经营|平台|跳跃|塔防|解谜|视觉小说|放置|挂机|沙盒|物理|动作|恐怖|钓鱼|多人|开放世界|射击|策略|养成|战棋|tcg|dbg|卡组/i.test(brief.genre || '');
+    if (!genreKnown || titles.length) {
+      state.pendingClarify = true;
+      const lines = [
+        '## 需要先确认一下（避免把品类判断错）',
+        titles.length
+          ? `你提到的 ${titles.map((t) => `《${t}》`).join('、')} 是**具体游戏名**，我需要知道它的品类才能给对市场数据（单文件模式查不到 Steam，所以直接问你）。`
+          : '我没从描述里识别出明确的**品类**，为了给对赛道数据，先跟你核对。',
+        '',
+        '**这款游戏的品类是？**（直接回复，或带上团队/周期）',
+        '',
+        '`肉鸽卡牌` ｜ `幸存者like` ｜ `模拟经营` ｜ `2D 平台跳跃` ｜ `放置挂机` ｜ `塔防` ｜ `沙盒物理` ｜ `视觉小说` ｜ `3D 动作` ｜ `解谜`',
+        '',
+        '> 补一句就够，例如：「品类：肉鸽卡牌，2D，2人团队，计划12个月上线」。',
+      ];
+      ai.bubble.innerHTML = md(lines.join('\n'));
+      const row = document.createElement('div');
+      row.className = 'row';
+      for (const g of ['肉鸽卡牌', '幸存者like', '模拟经营', '2D 平台跳跃']) {
+        const b = document.createElement('button');
+        b.className = 'mini';
+        b.textContent = '🏷️ ' + g;
+        b.onclick = () => { $('#input').value = `品类：${g}`; $('#input').focus(); };
+        row.appendChild(b);
+      }
+      ai.bubble.appendChild(row);
+      pushHist('user', text);
+      pushHist('assistant', lines.join('\n'));
+      scrollDown();
+      return;
+    }
+    state.pendingClarify = false;
     // 规则引擎：工期（纯规则，可靠）
     const dev = window.EVAL.estimateDevTime(brief);
     // LLM：市场定性评分（无实时数据，明确标注）
@@ -427,6 +462,7 @@ blockquote{border-left:3px solid #666;background:#f7f7f7;padding:6px 12px;margin
     user.bubble.textContent = text;
     try {
       if (state.mode === 'server') await serverModeChat(text);
+      else if (state.pendingClarify) await standaloneEval(text);
       else if (evalKeywords.test(text) && !isArchive.test(text)) await standaloneEval(text);
       else await standaloneChat(text);
     } finally {

@@ -264,7 +264,7 @@ export function scoreMarket(m = {}) {
   const letter = total >= 85 ? 'S' : total >= 70 ? 'A' : total >= 55 ? 'B' : total >= 40 ? 'C' : 'D';
   const completeness = Math.round((dims.filter((d) => d.status === 'ok').length / dims.length) * 100);
 
-  return { total, letter, dims, completeness, momentum, hype, releasesByYear, upcomingCount: upcoming };
+  return { total, letter, dims, completeness, momentum, hype, releasesByYear, upcomingCount: upcoming, dataSource: m.dataSource ?? null };
 }
 
 // ---------- 上线窗口评估 ----------
@@ -321,7 +321,7 @@ export function assessWindow({ devMonthsExpected = 12, market = {} }) {
 export function buildReport(brief, dev, market, win) {
   const lines = [];
   lines.push(`# 《${brief.name || '未命名项目'}》立项评估报告`);
-  lines.push(`> 评估时间：${localNow()} ｜ 数据来源：Steam 商店实时数据 / 网络检索 / 本地知识库 ｜ 本报告为概率性判断，市场未来不可预测，请结合最新数据滚动复查`);
+  lines.push(`> 评估时间：${localNow()} ｜ 数据来源：Steam 商店实时数据 / SteamCharts / 网络检索 / 本地知识库${market.dataSource ? ` / 补充数据源 ${market.dataSource}` : ''} ｜ 本报告为概率性判断，市场未来不可预测，请结合最新数据滚动复查`);
   lines.push('');
   lines.push(`## 一、项目画像`);
   lines.push(`| 项目 | 内容 |`);
@@ -354,6 +354,7 @@ export function buildReport(brief, dev, market, win) {
     ? `> ⚠️ 数据完整度 ${market.completeness}%（仅 ${market.dims.filter((d) => d.status === 'ok').length}/${market.dims.length} 个维度数据充足），评分置信度有限，建议稍后重新评估补齐数据再决策。`
     : `> 数据完整度 ${market.completeness}%。`;
   lines.push(gapNote);
+  if (market.dataSource) lines.push(`> 数据源说明：官方接口缺失的估算字段（拥有者/在线/销量近似）由「${market.dataSource}」补充；价格、好评率等仍以 Steam 官方接口为准。`);
   lines.push('');
   lines.push(`## 三、开发周期估算`);
   lines.push(`| 档位 | 工期 |`);
