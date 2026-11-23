@@ -95,22 +95,17 @@
           <label class="field"><span>数据源</span>
             <select id="dp-provider">
               <option value="">不启用（默认：仅官方接口）</option>
-              <option value="steamapi">Steam 官方 Web API（免费，无需 Key，只给在线人数）</option>
-              <option value="steamspy">SteamSpy（免费，可能被 Cloudflare 拦）</option>
-              <option value="gamalytic">Gamalytic（付费）</option>
-              <option value="vginsights">VG Insights（付费）</option>
-              <option value="steambase">Steambase（付费）</option>
-              <option value="custom">自定义（URL 模板 + 字段映射）</option>
             </select>
           </label>
+          <div id="dp-howto" class="tiny" style="margin:-2px 0 8px;color:#9fb4d8;line-height:1.6"></div>
           <label class="field"><span>数据源 API Key（免费源可留空）</span><input id="dp-key" type="password" placeholder="留空 = 保持已保存的 Key 不变" autocomplete="off"></label>
-          <label class="field"><span>URL 模板（可选，留空用预设；支持 {appid} 占位符）</span><input id="dp-url" placeholder="https://api.example.com/game/{appid}"></label>
-          <label class="field"><span>字段映射 JSON（可选）</span><input id="dp-map" placeholder='{"reviews":"reviews.total","owners":"owners","peak24h":"ccu"}'></label>
+          <label class="field"><span>URL 模板（仅自定义源需要；支持 {appid} 占位符）</span><input id="dp-url" placeholder="https://api.example.com/game/{appid}"></label>
+          <label class="field"><span>字段映射 JSON（仅自定义源需要）</span><input id="dp-map" placeholder='{"copiesSold":"copiesSold","owners":"owners","reviews":"reviews"}'></label>
           <div class="row" style="gap:8px;margin-top:8px">
             <button class="btn ghost" id="dp-save" style="width:auto;padding:6px 14px">保存并测试数据源</button>
           </div>
           <div id="dp-result" class="tiny" style="margin-top:6px"></div>
-          <p class="tiny" style="margin-top:8px">提示：SteamSpy 免费但数据粒度粗（拥有者区间）；付费源（Gamalytic / VG Insights / Steambase）能给到销量与收入估算。也可不填，用官方 Steam Web API（免费申请 Key）自行接。</p>
+          <p class="tiny" style="margin-top:8px">如实说明（2026-11 实测）：<b>SteamSpy</b> 免费但对服务器请求常被人机验证拦住；<b>Gamalytic</b> 是当前唯一公开定价+误差研究的 Steam 销量估算商（API 需 Starter $25/月起）；<b>VG Insights</b> 已被 Sensor Tower 收购，只剩企业版 API；<b>Steambase</b> 只有网站和 Discord/Slack 机器人，<b>没有公开 API</b>。</p>
         </details>
         <p class="tiny" style="margin-top:12px">常见配置：<br>
           • DeepSeek → <code>https://api.deepseek.com</code>，模型 <code>deepseek-chat</code> 或 <code>deepseek-flash</code>（platform.deepseek.com 注册）<br>

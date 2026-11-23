@@ -148,7 +148,16 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'GET') {
         return sendJson(res, 200, {
           ...st,
-          presets: Object.entries(PRESETS).map(([id, v]) => ({ id, label: v.label, free: Boolean(v.free), urlTemplate: v.base })),
+          presets: Object.entries(PRESETS).map(([id, v]) => ({
+            id,
+            label: v.label,
+            free: Boolean(v.free),
+            urlTemplate: v.base,
+            keyParam: v.keyParam ?? '',
+            howto: v.howto ?? '',
+            signup: v.signup ?? '',
+            needsKey: !v.free && id !== 'custom',
+          })),
         });
       }
       if (req.method === 'POST') {
@@ -175,12 +184,19 @@ const server = http.createServer(async (req, res) => {
         CONFIG.data.fieldMap = fieldMapRaw;
         let test = null;
         if (provider && b.test !== false) {
+          const notes = [];
+          const collector = (ev) => { if (ev?.text) notes.push(ev.text); };
           try {
-            const s = await providerGameStats({ appid: String(b.testAppid || 413150), name: 'Stardew Valley' }, null);
-            if (s) test = { ok: true, sample: s };
-            else { test = { ok: false, error: '数据源没有返回可识别的字段（检查 URL 模板与字段映射）' }; Object.assign(CONFIG.data, prev); return sendJson(res, 400, { ok: false, error: `测试失败：${test.error}`, test }); }
+            const s = await providerGameStats({ appid: String(b.testAppid || 413150), name: 'Stardew Valley' }, collector);
+            if (s) test = { ok: true, sample: s, notes };
+            else {
+              const reason = notes.join(' ｜ ') || '数据源没有返回可识别的字段（检查 URL 模板与字段映射）';
+              test = { ok: false, error: reason, notes };
+              Object.assign(CONFIG.data, prev);
+              return sendJson(res, 400, { ok: false, error: `测试失败：${reason}`, test });
+            }
           } catch (e) {
-            test = { ok: false, error: String(e.message || e).slice(0, 300) };
+            test = { ok: false, error: String(e.message || e).slice(0, 300), notes };
             Object.assign(CONFIG.data, prev);
             return sendJson(res, 400, { ok: false, error: `数据源测试失败：${test.error}`, test });
           }

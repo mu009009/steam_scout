@@ -768,15 +768,28 @@
     loadDataProvider();
   }
   // ---------- 可选第三方/付费数据源 ----------
+  let dpPresets = [];
+  function renderDpHowto(id) {
+    const el = $('#dp-howto');
+    if (!el) return;
+    const p = dpPresets.find((x) => x.id === id);
+    if (!p) { el.innerHTML = ''; return; }
+    el.innerHTML = `${p.howto}${p.signup ? ` <a href="${p.signup}" target="_blank" rel="noopener">打开官网 ↗</a>` : ''}`;
+  }
   async function loadDataProvider() {
     const sel = $('#dp-provider');
     if (!sel) return;
     try {
       const d = await (await fetch('/api/data-provider')).json();
+      dpPresets = d.presets || [];
+      // 下拉项由后端预设渲染：再也不会出现「前端写了、后端没有」的假数据源
+      sel.innerHTML = '<option value="">不启用（默认：仅官方接口）</option>' +
+        dpPresets.map((p) => `<option value="${p.id}">${p.label}</option>`).join('');
       sel.value = d.provider || '';
+      renderDpHowto(d.provider || '');
       if ($('#dp-key')) {
         $('#dp-key').value = '';
-        $('#dp-key').placeholder = d.hasKey ? `已保存：${d.apiKeyMasked}（留空保持不变）` : '付费源需要填写；SteamSpy 免费可留空';
+        $('#dp-key').placeholder = d.hasKey ? `已保存：${d.apiKeyMasked}（留空保持不变）` : '付费源需要填写；免费源可留空';
       }
       const isCustom = (d.provider || '') === 'custom';
       if ($('#dp-url')) $('#dp-url').value = isCustom ? (d.urlTemplate || '') : '';
@@ -911,9 +924,13 @@
     const v = $('#dp-provider').value;
     const res = $('#dp-result');
     if (v !== 'custom') { if ($('#dp-url')) $('#dp-url').value = ''; if ($('#dp-map')) $('#dp-map').value = ''; }
-    if (res && ['steamspy', 'steamapi', ''].includes(v)) {
+    renderDpHowto(v);
+    const p = dpPresets.find((x) => x.id === v);
+    if (res) {
       res.style.color = 'var(--muted)';
-      res.textContent = v === '' ? '保存后即关闭第三方数据源' : '该源免费、无需 Key；选好后点「保存并测试数据源」';
+      res.textContent = !v ? '保存后即关闭第三方数据源'
+        : p?.needsKey && !p?.free ? '该源需要 API Key，填好后点「保存并测试数据源」'
+          : '该源免费、无需 Key；选好后点「保存并测试数据源」';
     }
   };
   $('#guide-mask').onclick = (e) => { if (e.target.id === 'guide-mask') closeGuide(); };

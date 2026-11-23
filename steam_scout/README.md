@@ -31,7 +31,7 @@
 | 🗂 本地整理 | SQLite 知识库 + 中文倒排索引检索；多对话管理（新建/切换/删除）；项目档案（删除 / **导出 PDF** / **输出评估结论**）；全部本地存档（**完整版**）；单文件版用浏览器 localStorage |
 | 🧠 学习进化 | 调研结论自动提炼沉淀；每日市场复盘（热销榜变动+新闻+UP 主新视频）；自动调研队列；👍👎 反馈（**完整版**） |
 | 📊 立项评估 | 六维市场潜力评分（0-100，带**数据状态标注**与**数据缺口说明**）+ 开发周期三档估算 + 上线窗口评级 + 情景预案 + 季度检查信号 |
-| 🔌 可选数据源 | 支持接入第三方/付费数据源（Steam 官方 Web API 免费 / SteamSpy / Gamalytic / VG Insights / Steambase / **自定义 URL+字段映射**）：**选哪个源就用那个源的数据**补齐官方接口缺失的销量·拥有者·在线字段，报告里注明来源（默认不接，零成本可用） |
+| 🔌 可选数据源 | 支持接入第三方数据源（Steam 官方 Web API 免费 / SteamSpy 免费但常被拦 / Gamalytic 付费 / **自定义 URL+字段映射**）：**选哪个源就用那个源的数据**补齐官方接口缺失的销量·拥有者·在线字段，报告里注明来源（默认不接，零成本可用） |
 
 ## 🚀 快速开始（完整版）
 
@@ -59,15 +59,20 @@ node src\ingest\seed.mjs
 「⚙️ 配置 LLM API」弹窗里展开「🔌 可选：第三方 / 付费数据源」→ 选源 + 填 Key → 「保存并测试数据源」；或直接写 `.env`：
 
 ```ini
-DATA_PROVIDER=gamalytic          # steamapi(免费) / steamspy(免费) / gamalytic / vginsights / steambase / custom
+DATA_PROVIDER=gamalytic          # 只有四个：steamapi(免费) / steamspy(免费但常被拦) / gamalytic(付费) / custom
 DATA_PROVIDER_KEY=你的key
-DATA_PROVIDER_URL=               # 自定义时填，支持 {appid} / {name}
-DATA_PROVIDER_MAP=               # 自定义时填，如 {"owners":"owners","reviews":"reviews.total"}
+DATA_PROVIDER_URL=               # 仅 custom：URL 模板，支持 {appid} / {name}
+DATA_PROVIDER_MAP=               # 仅 custom：字段映射，如 {"owners":"owners","reviews":"reviews"}
 ```
 
-规则很简单：**官方接口优先，缺什么才用你选的源补什么**（价格/好评率/中文支持永远取自 Steam 官方）；
+- ✅ `steamapi` Steam 官方 Web API（免费、无需 Key，实测返回当前在线人数）
+- ⚠️ `steamspy` 免费，但该站对服务器请求回 Cloudflare 人机验证，成功率不稳（失败自动回退官方数据）
+- ✅ `gamalytic` 目前唯一**公开定价 + 公开误差研究**的 Steam 销量估算商：API 需 Starter $25/月起（2,500 次/天）；接口路径 `api.gamalytic.com/game/{appid}` 已实测存在（无 Key 返回 403）
+- ❌ 不再内置 **VG Insights**（已被 Sensor Tower 收购，只剩企业版 API）和 **Steambase**（只有网站与 Discord/Slack 机器人，**没有公开 API**）
+
+规则：**官方接口优先，缺什么才用你选的源补什么**（价格/好评率/中文支持永远取自 Steam 官方）；
 报告首页会写明 `补充数据源 XXX` 并注明哪些字段由它补充；数据源挂了/Key 失效只在过程中提示一行，不阻塞评估。
-详见 `docs/配置指南.md`。
+获取 Key 的步骤见 `docs/配置指南.md`（Gamalytic / Steam 官方 Key / 自定义 Apify 都有写）。
 
 > 📚 文档：`SKILL.md` = Agent 能力规格（Claude Skill 格式，可交给其他 Agent 使用）；`AGENTS.md` = 给 AI 编码 Agent 的仓库操作指南；`docs/交互流程.md` = 交互流程与问题排查；`docs/配置指南.md` = LLM 配置与分享说明。
 
