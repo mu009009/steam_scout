@@ -105,7 +105,7 @@
             <button class="btn ghost" id="dp-save" style="width:auto;padding:6px 14px">保存并测试数据源</button>
           </div>
           <div id="dp-result" class="tiny" style="margin-top:6px"></div>
-          <p class="tiny" style="margin-top:8px">如实说明（2026-11 实测）：<b>SteamSpy</b> 免费但对服务器请求常被人机验证拦住；<b>Gamalytic</b> 是当前唯一公开定价+误差研究的 Steam 销量估算商（API 需 Starter $25/月起）；<b>VG Insights</b> 已被 Sensor Tower 收购，只剩企业版 API；<b>Steambase</b> 只有网站和 Discord/Slack 机器人，<b>没有公开 API</b>。</p>
+          <p class="tiny" style="margin-top:8px">如实说明（2026-11 逐项实测）：<b>不接第三方源也完全可用</b>，工具已内置 Steam 官方接口 + SteamCharts + 官方在线人数兜底。<b>SteamSpy</b> 免费但对程序请求一律被 Cloudflare 人机验证拦死（换什么请求头都没用），因此不在下拉里默认提供；<b>Gamalytic</b> 能给出销量/收入估算，但 API 需 Starter $25/月起；<b>VG Insights</b> 已被 Sensor Tower 收购，只剩企业版；<b>Steambase</b> 只有网站和 Discord/Slack 机器人，没有公开 API。</p>
         </details>
         <p class="tiny" style="margin-top:12px">常见配置：<br>
           • DeepSeek → <code>https://api.deepseek.com</code>，模型 <code>deepseek-chat</code> 或 <code>deepseek-flash</code>（platform.deepseek.com 注册）<br>

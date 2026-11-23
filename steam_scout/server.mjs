@@ -152,6 +152,7 @@ const server = http.createServer(async (req, res) => {
             id,
             label: v.label,
             free: Boolean(v.free),
+            hidden: Boolean(v.hidden),
             urlTemplate: v.base,
             keyParam: v.keyParam ?? '',
             howto: v.howto ?? '',

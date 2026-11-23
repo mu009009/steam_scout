@@ -65,10 +65,11 @@ DATA_PROVIDER_URL=               # 仅 custom：URL 模板，支持 {appid} / {n
 DATA_PROVIDER_MAP=               # 仅 custom：字段映射，如 {"owners":"owners","reviews":"reviews"}
 ```
 
-- ✅ `steamapi` Steam 官方 Web API（免费、无需 Key，实测返回当前在线人数）
-- ⚠️ `steamspy` 免费，但该站对服务器请求回 Cloudflare 人机验证，成功率不稳（失败自动回退官方数据）
+- ✅ **免费模式就是默认模式**：不接第三方源时，工具用 Steam 官方商店接口 + 官方评价接口 + SteamCharts + **Steam 官方在线人数兜底（免 Key）**，`评价数×35 ≈ 销量` + 在线人数 + 新游密度三件套够看量级
+- ⚠️ `steamspy` 免费，但 2026-11 实测**换任何请求头都被 Cloudflare 拦死**（403 challenge），已从下拉隐藏（想自己再试可用 `custom` 填它的 URL）
 - ✅ `gamalytic` 目前唯一**公开定价 + 公开误差研究**的 Steam 销量估算商：API 需 Starter $25/月起（2,500 次/天）；接口路径 `api.gamalytic.com/game/{appid}` 已实测存在（无 Key 返回 403）
-- ❌ 不再内置 **VG Insights**（已被 Sensor Tower 收购，只剩企业版 API）和 **Steambase**（只有网站与 Discord/Slack 机器人，**没有公开 API**）
+- ❌ 不内置 **VG Insights**（已被 Sensor Tower 收购，只剩企业版 API）和 **Steambase**（只有网站与 Discord/Slack 机器人，**没有公开 API**）
+- ℹ️ Steam 官方 `dev/apikey` 要求账号消费满 $5 才给 Key —— **本工具一个功能都不依赖那把 Key**，只有上面那个免 Key 的在线人数接口够用了
 
 规则：**官方接口优先，缺什么才用你选的源补什么**（价格/好评率/中文支持永远取自 Steam 官方）；
 报告首页会写明 `补充数据源 XXX` 并注明哪些字段由它补充；数据源挂了/Key 失效只在过程中提示一行，不阻塞评估。

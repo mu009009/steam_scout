@@ -783,8 +783,10 @@
       const d = await (await fetch('/api/data-provider')).json();
       dpPresets = d.presets || [];
       // 下拉项由后端预设渲染：再也不会出现「前端写了、后端没有」的假数据源
+      // hidden = 实测不可用的源（如 SteamSpy 被 Cloudflare 全拦），仅在已选中时保留显示
+      const shown = dpPresets.filter((p) => !p.hidden || p.id === (d.provider || ''));
       sel.innerHTML = '<option value="">不启用（默认：仅官方接口）</option>' +
-        dpPresets.map((p) => `<option value="${p.id}">${p.label}</option>`).join('');
+        shown.map((p) => `<option value="${p.id}">${p.label}</option>`).join('');
       sel.value = d.provider || '';
       renderDpHowto(d.provider || '');
       if ($('#dp-key')) {
@@ -795,7 +797,11 @@
       if ($('#dp-url')) $('#dp-url').value = isCustom ? (d.urlTemplate || '') : '';
       if ($('#dp-map')) $('#dp-map').value = isCustom && d.fieldMap && Object.keys(d.fieldMap || {}).length ? JSON.stringify(d.fieldMap) : '';
       const res = $('#dp-result');
-      if (res) { res.style.color = 'var(--muted)'; res.textContent = d.configured ? `当前：${d.label}${d.hasKey ? '（已存 Key）' : ''} —— 评估时会用该源补齐缺失字段` : '当前未启用数据源：仅使用 Steam 官方接口'; }
+      if (res) {
+        res.style.color = 'var(--muted)';
+        const paused = d.blockedUntil ? `（该源最近连续失败，已暂停到 ${new Date(d.blockedUntil).toLocaleTimeString('zh-CN')}）` : '';
+        res.textContent = d.configured ? `当前：${d.label}${d.hasKey ? '（已存 Key）' : ''} —— 评估时会用该源补齐缺失字段${paused}` : '当前未启用数据源：仅使用 Steam 官方接口（免费模式，推荐）';
+      }
     } catch {}
   }
   async function saveDataProvider() {

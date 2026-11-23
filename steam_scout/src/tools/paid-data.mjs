@@ -25,8 +25,9 @@ export const PRESETS = {
   steamspy: {
     base: 'https://steamspy.com/api.php?request=appdetails&appid={appid}',
     free: true,
-    label: 'SteamSpy（免费·常被 Cloudflare 拦）',
-    howto: '免费、无需 Key，可给拥有者区间与好评/差评数。但该站对服务器请求常返回「人机验证」页，成功率不稳定，失败会自动回退官方数据。',
+    hidden: true,
+    label: 'SteamSpy（免费·实测被 Cloudflare 全拦）',
+    howto: '免费、无需 Key，理论上能给拥有者区间与好评/差评数。但 2026-11 实测：无论换什么请求头，该站对程序请求一律返回 Cloudflare 人机验证页（HTTP 403 challenge），**基本不可用**，所以不在下拉里默认提供。若你想自己再试，可在「自定义」里填它的 URL 试试。',
     signup: 'https://steamspy.com/api.php',
   },
   gamalytic: {
@@ -66,6 +67,7 @@ export function dataProviderStatus() {
     provider: provider || null,
     configured: Boolean(provider),
     free: Boolean(preset?.free),
+    hidden: Boolean(preset?.hidden),
     label: preset?.label ?? (provider ? provider : null),
     hasKey: Boolean(d.apiKey),
     apiKeyMasked: d.apiKey ? `${String(d.apiKey).slice(0, 4)}…${String(d.apiKey).slice(-4)}` : '',
@@ -74,9 +76,30 @@ export function dataProviderStatus() {
     keyParam: preset?.keyParam ?? '',
     howto: preset?.howto ?? '',
     signup: preset?.signup ?? '',
+    blockedUntil: breaker.blockUntil > Date.now() ? new Date(breaker.blockUntil).toISOString() : null,
     note: provider ? (preset ? `使用 ${preset.label} 补充数据` : '自定义数据源') : '未配置付费源：仅使用 Steam 官方接口 + SteamCharts',
   };
 }
+
+/**
+ * 熔断器：连续失败 2 次后 30 分钟内不再尝试该源。
+ * 目的：免费源被 Cloudflare 拦时，别在每次评估里都白等 6 次 × 15 秒。
+ */
+const breaker = { fails: 0, blockUntil: 0, lastError: '' };
+const BREAK_AFTER = 2;
+const BREAK_MS = 30 * 60 * 1000;
+
+export function providerBreakerState() {
+  return { ...breaker, blocked: breaker.blockUntil > Date.now() };
+}
+
+function breakerFail(msg) {
+  breaker.fails += 1;
+  breaker.lastError = String(msg || '').slice(0, 200);
+  if (breaker.fails >= BREAK_AFTER) breaker.blockUntil = Date.now() + BREAK_MS;
+}
+
+function breakerOk() { breaker.fails = 0; breaker.blockUntil = 0; breaker.lastError = ''; }
 
 function safeParse(s) {
   if (!s) return null;
@@ -93,6 +116,7 @@ export async function providerGameStats({ appid, name }, emit = null) {
   const status = dataProviderStatus();
   if (!status.configured) return null;
   if (!appid) return null;
+  if (breaker.blockUntil > Date.now()) return null; // 熔断期内直接跳过，不再浪费请求
   const rawUrl = String(status.urlTemplate || '')
     .replace('{appid}', encodeURIComponent(String(appid)))
     .replace('{name}', encodeURIComponent(String(name ?? '')));
@@ -147,10 +171,19 @@ export async function providerGameStats({ appid, name }, emit = null) {
     if (out.revenue) bits.push(`收入估算 $${Math.round(out.revenue).toLocaleString('en-US')}`);
     if (out.reviews) bits.push(`评价 ${out.reviews}`);
     if (out.peak24h != null) bits.push(`在线 ${out.peak24h}`);
+    breakerOk();
     if (emit) emit({ type: 'status', text: `数据源 ${status.label} 补充：${out.name || `appid ${appid}`}${bits.length ? `，${bits.join('，')}` : '（无可用字段）'}` });
     return out;
   } catch (e) {
-    if (emit) emit({ type: 'status', text: `⚠️ 数据源 ${status.label} 调用失败（${truncate(String(e.message || e), 90)}），继续用官方接口数据` });
+    breakerFail(e?.message || e);
+    // 同类错误只提示一次：避免 6 款竞品刷 6 行一模一样的话
+    const msg = truncate(String(e.message || e), 90);
+    if (emit && breaker.fails === 1) {
+      emit({ type: 'status', text: `⚠️ 数据源 ${status.label} 调用失败（${msg}），继续用官方接口数据` });
+    }
+    if (breaker.blockUntil > Date.now() && emit) {
+      emit({ type: 'status', text: `⏸ 数据源「${status.label}」连续失败 ${breaker.fails} 次，已暂停使用 30 分钟（本次评估不再尝试）；想要销量类数据可换成 Gamalytic 或先不接第三方源。` });
+    }
     return null;
   }
 }
@@ -162,12 +195,17 @@ export async function providerGameStats({ appid, name }, emit = null) {
 export async function enrichCompetitors(competitors, emit = null, { maxCalls = 6, budgetMs = 30000 } = {}) {
   const status = dataProviderStatus();
   if (!status.configured || !competitors?.length) return { competitors, sourceUsed: null, truncated: false };
+  if (breaker.blockUntil > Date.now()) {
+    if (emit) emit({ type: 'status', text: `⏸ 数据源「${status.label}」暂停中（最近失败：${truncate(breaker.lastError, 60)}），本次跳过，直接用官方数据` });
+    return { competitors, sourceUsed: null, truncated: false, skippedByBreaker: true };
+  }
   const deadline = Date.now() + budgetMs;
   let used = 0;
   let calls = 0;
   let truncated = false;
   for (const c of competitors) {
     if (!c.appid) continue;
+    if (breaker.blockUntil > Date.now()) { truncated = true; break; } // 熔断后不再浪费请求
     // 只补缺失字段，避免覆盖 Steam 官方更权威的数据
     const need = c.reviews == null || c.peak24h == null || !c.owners;
     if (!need) continue;

@@ -5,7 +5,7 @@ import { TOOLS, toolDefs, runTool } from './tools/index.mjs';
 import { addConv, recentConvs, addInsight, counts, setMeta, upsertProject, addEvaluation } from './db.mjs';
 import { search, invalidate } from './retriever.mjs';
 import { runEvaluation, estimateDevTime } from './evaluator.mjs';
-import { storeSearch, appDetails, appReviews, steamCharts, featuredCategories, popularTags, topTagIdFromRows, tagNameById, steamSearch, appTags } from './tools/steam.mjs';
+import { storeSearch, appDetails, appReviews, steamCharts, featuredCategories, popularTags, topTagIdFromRows, tagNameById, steamSearch, appTags, currentPlayers } from './tools/steam.mjs';
 import { searchVideos } from './tools/bilibili.mjs';
 import { bingSearch } from './tools/websearch.mjs';
 import { dataProviderStatus, enrichCompetitors } from './tools/paid-data.mjs';
@@ -364,10 +364,23 @@ async function researchMarket(brief, emit) {
       });
     } catch {}
   }
-  // 头部 3 款在线人数
+  // 头部 3 款在线人数（SteamCharts）；拿不到的用 Steam 官方「当前在线」接口兜底（免费、无需 Key）
   for (const c of research.competitors.slice(0, 3)) {
-    try { const ch = await steamCharts(c.appid); c.peak24h = ch.peak24h; } catch {}
+    try { const ch = await steamCharts(c.appid); c.peak24h = ch.peak24h; c.peakSource = ch.peak24h ? 'steamcharts' : null; } catch {}
   }
+  const noOnline = research.competitors.slice(0, 3).filter((c) => c.peak24h == null);
+  for (const c of noOnline) {
+    if (overBudget()) break;
+    try {
+      const cp = await currentPlayers(c.appid);
+      if (cp.current != null && cp.current > 0) {
+        c.peak24h = cp.current;       // 仅作下界使用（当前在线 ≤ 24h 峰值）
+        c.peakSource = 'official-current';
+      }
+    } catch {}
+  }
+  const fallbackCount = research.competitors.filter((c) => c.peakSource === 'official-current').length;
+  if (fallbackCount) step(`SteamCharts 未取到在线数据，已用 Steam 官方「当前在线」兜底 ${fallbackCount} 款（当前在线 ≤ 24h 峰值，按保守下界计）`);
   // 3.5 可选第三方/付费数据源补充（只有配置了 DATA_PROVIDER 才走，只补官方接口缺失的字段）
   const provStatus = dataProviderStatus();
   if (provStatus.configured && research.competitors.length && !overBudget()) {
@@ -379,7 +392,8 @@ async function researchMarket(brief, emit) {
         step(`数据源「${r.sourceUsed}」补充完成：${research.competitors.filter((c) => c.dataSource).length} 款竞品拿到补充数据`);
         emit({ type: 'tool', name: 'data_provider', status: 'end', summary: r.sourceUsed });
       } else {
-        step(`数据源「${provStatus.label}」未返回有效数据（可能 key 无效/额度用尽），继续用官方接口数据`);
+        const paused = r?.skippedByBreaker ? '（该源最近连续失败，已在 30 分钟内暂停尝试）' : '（可能被 Cloudflare 拦 / Key 无效 / 额度用尽）';
+        step(`数据源「${provStatus.label}」未返回有效数据${paused}，已按官方数据继续`);
         emit({ type: 'tool', name: 'data_provider', status: 'error', summary: '无有效返回' });
       }
     } catch (e) {

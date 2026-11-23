@@ -61,6 +61,16 @@ export async function steamCharts(appid) {
   return { appid, currentPlayers: nums[0] ?? null, peak24h: nums[1] ?? null, allTimePeak: nums[2] ?? null };
 }
 
+/**
+ * Steam 官方「当前在线人数」接口（免费、无需任何 Key）。
+ * 用途：SteamCharts 拿不到在线数据时的兜底——当前在线 ≠ 24h 峰值，只能当下界用，调用方需注明来源。
+ */
+export async function currentPlayers(appid) {
+  const j = await fetchJson(`https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=${encodeURIComponent(appid)}`, FAST);
+  const n = j?.response?.player_count;
+  return { appid, current: Number.isFinite(Number(n)) ? Number(n) : null };
+}
+
 export async function appTags(appid) {
   const { text } = await fetchText(`${BASE}/app/${appid}/?l=${CONFIG.steam.l}`, { timeoutMs: 20000, retries: 2 });
   const m = text.match(/<div class="glance_tags popular_tags"[\s\S]*?<\/div>\s*<\/div>/);
