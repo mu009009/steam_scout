@@ -67,7 +67,35 @@ try {
   t('bingSearch', b.results.length > 0, `${b.results.length} 条, 首条: ${b.results[0]?.title}`);
 } catch (e) { t('bingSearch', false, e.message); }
 
-console.log('== 6. 评估引擎 ==');
+console.log('== 6. 品类标签定位 ==');
+try {
+  const { matchGenreTag, GENRE_TAG_RULES } = await import('../src/genre-tags.mjs');
+  const cases = [
+    ['模拟经营', 12472], ['牧场类模拟经营', 87918], ['幸存者like', 3959],
+    ['肉鸽卡牌', 32322], ['塔防肉鸽', 1645], ['放置挂机', 615955],
+  ];
+  let bad = [];
+  for (const [q, want] of cases) {
+    const hit = matchGenreTag(q);
+    if (String(hit?.tagid) !== String(want)) bad.push(`${q}→${hit?.tagid ?? 'null'}(期望${want})`);
+  }
+  t('静态词表匹配', bad.length === 0, bad.length ? bad.join('; ') : `${cases.length} 个用例命中`);
+  // 有标签字典时，逐条校验 tagid 是否真实存在（防止写错 ID）
+  let verified = '无字典缓存，跳过校验';
+  try {
+    const tags = await popularTags();
+    const byId = new Map(tags.map((x) => [String(x.tagid), x.name]));
+    const wrong = GENRE_TAG_RULES.filter((r) => { const real = byId.get(String(r.tagid)); return real && real !== r.name; })
+      .map((r) => `${r.tagid}: 写「${r.name}」实际「${byId.get(String(r.tagid))}」`);
+    const missing = GENRE_TAG_RULES.filter((r) => !byId.has(String(r.tagid))).map((r) => `${r.tagid}(${r.name})`);
+    verified = missing.length ? `不在热门字典但有可能是长尾标签: ${missing.join(', ')}` : '全部 tagid 与官方字典一致';
+    t('词表 tagid 校验', wrong.length === 0, wrong.length ? wrong.join('; ') : verified);
+  } catch (e) {
+    t('词表 tagid 校验', true, `跳过（标签字典不可用: ${String(e.message).slice(0, 40)}）`);
+  }
+} catch (e) { t('品类标签定位', false, e.message); }
+
+console.log('== 7. 评估引擎 ==');
 try {
   const dev = estimateDevTime({ genre: '肉鸽卡牌', description: '2D 卡组构筑', teamSize: 2, experience: '有经验' });
   t('estimateDevTime', dev.months.expected > 0 && dev.months.pessimistic >= dev.months.expected, `基准 ${dev.months.expected} 月 [${dev.months.optimistic}~${dev.months.pessimistic}] (${dev.genreLabel})`);

@@ -422,7 +422,7 @@
         else if (e.type === 'error') { ai.bubble.innerHTML = `<p class="err">❌ ${esc(e.message)}</p>`; }
       });
       if (status) status.remove();
-      if (!acc) ai.bubble.innerHTML = '<p>（无内容）</p>';
+      if (!acc) ai.bubble.innerHTML = '<p>（本轮模型没有输出正文，可能只输出了思考过程或不支持该请求。请重发一次，或换成更具体的提问。）</p>';
       else {
         ai.bubble.innerHTML = md(acc) + '<div class="row"><button class="mini" data-act="pdf">⤓ 导出 PDF</button></div>';
         const btn = ai.wrap.querySelector('button[data-act="pdf"]');

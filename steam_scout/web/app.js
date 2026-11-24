@@ -450,7 +450,12 @@
       clearInterval(ticker);
       clearInterval(rotator);
       if (statusLine && statusLine.parentNode) statusLine.remove();
-      if (!ai.textBuf && !ai.reportEl) ai.bubble.innerHTML = '<p>（无内容）</p>';
+      if (!ai.textBuf && !ai.reportEl) {
+        const hint = toolCount
+          ? `本轮完成了 ${toolCount} 次数据查询，但模型没有输出正文`
+          : '本轮模型没有输出正文（可能只输出了思考过程）';
+        ai.bubble.innerHTML = `<p>（${hint}。可展开上方「💭 思考过程」查看，或重发一次 / 换个问法。）</p>`;
+      }
       busy = false;
       sendBtn.disabled = false;
       inputEl.placeholder = '';

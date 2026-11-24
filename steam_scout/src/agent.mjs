@@ -9,6 +9,8 @@ import { storeSearch, appDetails, appReviews, steamCharts, featuredCategories, p
 import { searchVideos } from './tools/bilibili.mjs';
 import { bingSearch } from './tools/websearch.mjs';
 import { dataProviderStatus, enrichCompetitors } from './tools/paid-data.mjs';
+import { matchGenreTag } from './genre-tags.mjs';
+import { extractPseudoToolCalls, stripToolMarkup } from './toolcall-repair.mjs';
 import { truncate, safeJsonParse, parseJsonLoose, sleep } from './util.mjs';
 import { cacheGet, cacheSet } from './research-cache.mjs';
 
@@ -56,10 +58,12 @@ async function reactLoop(messages, emit, { maxRounds, session } = {}) {
   const rounds = maxRounds ?? CONFIG.agent.maxToolRounds;
   const maxCalls = CONFIG.agent.maxToolCalls ?? 14;
   let totalCalls = 0;
+  let repaired = 0;
   for (let round = 0; round < rounds; round++) {
     // 达到工具调用上限后不再提供工具，强制模型汇总结论
     const offerTools = totalCalls < maxCalls;
     if (!offerTools && round === 0) emit({ type: 'status', text: '（已达调研工具调用上限，开始汇总结论）' });
+    if (round > 0) emit({ type: 'status', text: `正在继续分析（第 ${round + 1} 轮，已调用 ${totalCalls} 次工具）…` });
     const resp = await chat({
       messages,
       tools: offerTools ? toolDefs : null,
@@ -67,11 +71,30 @@ async function reactLoop(messages, emit, { maxRounds, session } = {}) {
       onReasoning: (r) => emit({ type: 'reasoning', text: r }),
     });
 
-    if (resp.toolCalls && resp.toolCalls.length) {
-      totalCalls += resp.toolCalls.length;
+    // 有些模型把工具调用写成正文（DSML 标记等）→ 解析回真正的调用，并把标记从正文里抹掉
+    const pseudo = extractPseudoToolCalls(resp.content || '');
+    const cleanContent = pseudo.cleaned;
+    let calls = resp.toolCalls || [];
+    if (!calls.length && pseudo.calls.length) {
+      calls = pseudo.calls.map((c, i) => ({
+        id: `pseudo_${Date.now()}_${i}`,
+        type: 'function',
+        function: { name: c.name, arguments: JSON.stringify(c.args ?? {}) },
+      }));
+      repaired += calls.length;
+      emit({
+        type: 'status',
+        text: `🔧 模型把工具调用写成了正文（非标准格式），已自动识别并执行：${pseudo.calls.map((c) => c.name).join('、')}`,
+      });
+    } else if (pseudo.hadMarkup && !cleanContent) {
+      emit({ type: 'status', text: '🔧 已过滤掉模型输出中的非标准标记片段' });
+    }
+
+    if (calls.length) {
+      totalCalls += calls.length;
       if (totalCalls >= maxCalls) emit({ type: 'status', text: `（已调用 ${totalCalls} 次工具，达到上限，开始汇总结论）` });
-      messages.push({ role: 'assistant', content: resp.content || '', tool_calls: resp.toolCalls });
-      for (const tc of resp.toolCalls) {
+      messages.push({ role: 'assistant', content: cleanContent || '', tool_calls: calls });
+      for (const tc of calls) {
         const name = tc.function.name;
         let args = {};
         try { args = safeJsonParse(tc.function.arguments, {}); } catch {}
@@ -82,9 +105,44 @@ async function reactLoop(messages, emit, { maxRounds, session } = {}) {
       }
       continue;
     }
-    return resp.content;
+
+    // 没有工具调用、也没有正文（常见于模型只想调工具却吐了空内容）：不要静默结束
+    if (!cleanContent.trim()) {
+      if (round < rounds - 1) {
+        emit({ type: 'status', text: '（模型本回合没有输出正文，继续下一轮…）' });
+        messages.push({ role: 'user', content: '请继续：如果还需要数据就用工具继续查；如果信息够了，直接给出完整结论（不要输出任何工具调用标记）。' });
+        continue;
+      }
+      return '（本次没有生成有效正文，可能是模型输出格式异常。可以重发一次问题，或把问题换成更具体的描述。）';
+    }
+
+    // 输出被 max_tokens 截断（finish_reason=length）：自动续写，避免答案半句断掉
+    if (resp.finishReason === 'length') {
+      let acc = cleanContent;
+      let roundsLeft = 3;
+      emit({ type: 'status', text: '（输出达到单次长度上限，正在自动续写剩余内容…）' });
+      while (roundsLeft-- > 0) {
+        const cont = await chat({
+          messages: [
+            ...messages,
+            { role: 'assistant', content: acc },
+            { role: 'user', content: '上一条回复因为达到长度上限被截断了。请紧接着上一条的结尾继续写，不要重复已有内容，不要写"接上文"之类的说明，直接输出剩余部分。' },
+          ],
+          tools: null,
+          onDelta: (d) => emit({ type: 'delta', text: d }),
+          onReasoning: (r) => emit({ type: 'reasoning', text: r }),
+        });
+        const piece = extractPseudoToolCalls(cont.content || '').cleaned;
+        if (piece.trim()) acc += piece;
+        if (cont.finishReason !== 'length') { if (roundsLeft >= 0) emit({ type: 'status', text: '（续写完成）' }); return acc; }
+        if (!piece.trim()) break;
+      }
+      return `${acc}\n\n> ⚠️ 输出长度已达上限（模型单次回复上限），以上内容可能仍不完整。可以让我「继续写第 N 部分」接着写。`;
+    }
+    return cleanContent;
   }
-  return (messages.findLast?.((m) => m.role === 'assistant' && m.content) || messages.filter((m) => m.role === 'assistant').pop())?.content ?? '（已达最大调研轮数，请基于已有数据总结）';
+  const last = (messages.findLast?.((m) => m.role === 'assistant' && m.content) || messages.filter((m) => m.role === 'assistant').pop())?.content;
+  return last || (repaired ? '（已达最大调研轮数，工具结果已获取但模型未给出总结，请再问一次或缩小问题范围）' : '（已达最大调研轮数，请基于已有数据总结）');
 }
 
 /** 为下一轮操作生成建议按钮（随消息持久化，重新打开/切换对话后依然可见） */
@@ -256,7 +314,7 @@ async function researchMarket(brief, emit) {
   let skipped = 0;
   const skipNote = (what) => { skipped++; step(`⏱️ 数据采集超时（Steam 可能限流），跳过${what}，本次评分将标注数据缺口`); };
 
-  // 1. 品类标签定位：品类标签 > 关键词反推 > 泛标签兜底
+  // 1. 品类标签定位：静态表(离线可用) > 官方标签字典精确匹配 > 搜索结果反推 > 泛标签兜底
   step(`正在定位品类标签…`);
   const hay = `${brief.genre} ${brief.description}`;
   const collect = (cands) => {
@@ -278,8 +336,21 @@ async function researchMarket(brief, emit) {
     return found[0]?.t ?? null;
   };
   let tag = null;
-  try { tag = await pickFrom(collect(GENRE_TAG_CANDIDATES)); } catch {}
-  // 品类标签未命中：关键词搜索结果行的高频标签反推（覆盖热门榜之外的细分标签，如幸存者like）
+  let tagSource = null;
+  // 1a 静态映射表：不依赖网络，限流时也能定位（模拟经营→管理、幸存者like→轻度Rogue…）
+  const staticHit = matchGenreTag(`${brief.genre} ${brief.description}`);
+  if (staticHit) {
+    tag = { tagid: staticHit.tagid, name: staticHit.name };
+    tagSource = `内置词表「${staticHit.matchedKey}」`;
+  }
+  // 1b 官方标签字典精确匹配（能拿到更地道的名字时以它为准）
+  if (!tag) {
+    try {
+      const t = await pickFrom(collect(GENRE_TAG_CANDIDATES));
+      if (t) { tag = t; tagSource = 'Steam 标签字典'; }
+    } catch {}
+  }
+  // 1c 关键词搜索结果行的高频标签反推（覆盖词表外的细分标签）
   if (!tag) {
     try {
       const probe = await storeSearchCached({ term: brief.genre.replace(/[\/｜|·]/g, ' '), sort: 'released_desc', limit: 50 });
@@ -291,15 +362,25 @@ async function researchMarket(brief, emit) {
         } catch {}
         if (!name) name = await tagNameById(inferred.tagid).catch(() => null);
         tag = { tagid: inferred.tagid, name: name ?? `#${inferred.tagid}` };
+        tagSource = '搜索结果反推';
       }
     } catch {}
   }
-  // 仍无标签：泛标签兜底（单人/独立/动作等）
+  // 1d 仍无标签：泛标签兜底（单人/独立/动作等）
+  let tagGeneric = false;
   if (!tag) {
-    try { tag = await pickFrom(collect(GENERIC_TAG_CANDIDATES)); } catch {}
+    try {
+      const t = await pickFrom(collect(GENERIC_TAG_CANDIDATES));
+      if (t) { tag = t; tagGeneric = true; tagSource = '泛标签兜底（品类未识别）'; }
+    } catch {}
   }
   research.tagName = tag?.name ?? null;
-  step(tag ? `品类标签：${tag.name}` : '（标签定位失败，改用关键词搜索）');
+  research.tagSource = tagSource;
+  // 没能定位到具体品类（用了泛标签或干脆没标签）：竞品口径不可信，必须在报告里标注
+  research.tagResolved = Boolean(tag) && !tagGeneric;
+  step(tag
+    ? `品类标签：${tag.name}（来源：${tagSource}）${tagGeneric ? ' ——⚠️ 未识别出具体品类，竞品数据仅供参考' : ''}`
+    : '⚠️ 品类标签定位失败，改用关键词近似搜索（竞品口径可能不准，报告会标注）');
   const termFallback = tag ? null : brief.genre.replace(/[\/｜|·]/g, ' ');
 
   // 2. 新游发行趋势（最多 300 条，按年聚合）
@@ -461,6 +542,8 @@ async function researchMarket(brief, emit) {
 
   // 7. 数据就绪度自检：汇总采集结果，缺数据时明确告知（评分引擎按中性分处理并在报告里标注缺口）
   const readiness = [];
+  if (research.tagResolved === false) readiness.push('⚠️ 品类标签未定位（竞品为近似样本）');
+  else if (research.tagName) readiness.push(`品类标签「${research.tagName}」`);
   readiness.push(research.competitors.length ? `竞品 ${research.competitors.length} 款` : '⚠️ 无竞品数据');
   readiness.push(releaseRows.length ? `新游记录 ${releaseRows.length} 条` : '⚠️ 无新游数据');
   readiness.push(research.upcomingCount != null ? `即将上线 ${research.upcomingCount} 款` : '⚠️ 即将上线缺失');
@@ -505,7 +588,10 @@ async function narrate(brief, evalResult, research, emit) {
     onDelta: (d) => emit({ type: 'delta', text: d }),
     onReasoning: (t) => emit({ type: 'reasoning', text: t }),
   });
-  return r.content;
+  let out = stripToolMarkup(r.content || '');
+  // 专家解读被长度上限截断时明确告知（而不是让用户看到半句话）
+  if (r.finishReason === 'length') out += '\n\n> ⚠️ 专家解读达到单次输出上限被截断，可点「继续深入这个话题」让我接着写。';
+  return out;
 }
 
 function buildClarify(brief, titles, notFound) {
@@ -657,6 +743,13 @@ export async function distillFromText(text, { category = '调研结论', tags = 
 
 // ---------- 对外主入口 ----------
 export async function runChat({ session = 'default', message, mode = null, emit = () => {} }) {
+  // 记录已经流出去的正文，用于结尾"补发"：某些情况下（推理模型只吐思考、工具轮结束后没有正文流）
+  // 前端会一个字都收不到，界面就会显示"（无内容）"。
+  const streamedParts = [];
+  const emitTracked = (ev) => {
+    if (ev && ev.type === 'delta' && ev.text) streamedParts.push(ev.text);
+    emit(ev);
+  };
   const history = recentConvs(session, CONFIG.agent.historyTurns * 2);
   const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
   for (const h of history) messages.push({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content });
@@ -675,7 +768,7 @@ export async function runChat({ session = 'default', message, mode = null, emit 
   let evalMeta = null;
   try {
     if (m === 'eval') {
-      evalMeta = await runEvalMode(message, emit, session, context);
+      evalMeta = await runEvalMode(message, emitTracked, session, context);
       finalText = evalMeta.text;
     } else {
       emit({ type: 'status', text: llmConfigured() ? '正在思考（可调用 Steam/B站/搜索/知识库工具）…' : 'LLM 未配置，只能走离线模式…' });
@@ -684,7 +777,7 @@ export async function runChat({ session = 'default', message, mode = null, emit 
         emit({ type: 'delta', text });
         finalText = text;
       } else {
-        finalText = await reactLoop(messages, emit, { session });
+        finalText = await reactLoop(messages, emitTracked, { session });
         if (!finalText) finalText = '（本轮未产出内容，请换个问法）';
       }
     }
@@ -693,6 +786,20 @@ export async function runChat({ session = 'default', message, mode = null, emit 
     emit({ type: 'error', message: msg });
     addConv(session, 'assistant', `[错误] ${msg}`, { error: true });
     throw e;
+  }
+  // 最后一道保险：任何非标准工具调用标记都不能进聊天记录/正文
+  finalText = stripToolMarkup(String(finalText || '')).trim();
+  if (!finalText) finalText = '（本轮没有生成有效正文：模型可能输出了非标准格式。请重发一次，或把问题拆小一点。）';
+
+  // 结尾补发：前端只认流式正文，如果这一轮正文压根没流出去（推理模型只吐思考、
+  // 或工具轮结束后没再产出正文），界面会显示"（无内容）"。这里把缺的部分补上。
+  if (m !== 'eval') {
+    const streamed = streamedParts.join('');
+    let rest = '';
+    if (!streamed.trim()) rest = finalText;
+    else if (finalText.startsWith(streamed)) rest = finalText.slice(streamed.length);
+    else if (streamed.trim() === finalText.trim()) rest = '';
+    if (rest.trim()) emit({ type: 'delta', text: rest.startsWith('\n') ? rest : `\n\n${rest}` });
   }
 
   const suggestions = evalMeta?.clarify

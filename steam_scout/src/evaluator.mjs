@@ -88,9 +88,17 @@ export function scoreMarket(m = {}) {
       const totalSalesEst = withReviews.reduce((s, c) => s + c.reviews * 35, 0); // Steam 评价数×~35 ≈ 销量
       score = clamp(10 + Math.log10(1 + totalSalesEst) / Math.log10(1e6) * 90, 10, 98);
       const topPeak = Math.max(0, ...competitors.map((c) => c.peak24h ?? 0));
-      detail = `头部${Math.min(withReviews.length, 10)}款估算总销量约${totalSalesEst >= 10000 ? (totalSalesEst / 10000).toFixed(1) + '万' : Math.round(totalSalesEst)}份；品类最高24h在线${topPeak}`;
+      const peakNote = competitors.some((c) => c.peakSource === 'official-current') ? '（含官方当前在线兜底值）' : '';
+      detail = `头部${Math.min(withReviews.length, 10)}款估算总销量约${totalSalesEst >= 10000 ? (totalSalesEst / 10000).toFixed(1) + '万' : Math.round(totalSalesEst)}份；品类最高24h在线${topPeak}${peakNote}`;
       status = competitors.length >= 3 ? 'ok' : 'partial';
       if (status === 'partial') gaps = ['热销竞品样本不足3款'];
+      // 品类标签没定位到 → 竞品是泛样本，需求规模高估风险很大，必须降级并标注
+      if (m.tagResolved === false) {
+        score = Math.min(score, 62);
+        status = 'partial';
+        gaps = [...(gaps || []), '品类标签未定位（竞品为近似样本，需求规模可能高估）'];
+        detail += '；⚠️ 未定位到该品类标签，样本可能包含非同类游戏';
+      }
     } else {
       detail = '未获取到竞品评价/销量数据，无法估算需求规模，按中性 50 分处理';
       status = 'no-data';

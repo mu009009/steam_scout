@@ -1,4 +1,6 @@
 // Steam 数据工具：商店 API / 商店搜索页 / SteamCharts
+import fs from 'node:fs';
+import path from 'node:path';
 import { CONFIG } from '../config.mjs';
 import { fetchJson, fetchText, decodeEntities, htmlToText, truncate } from '../util.mjs';
 
@@ -117,15 +119,56 @@ export async function gameLookup(name, emit = null) {
 let tagsCache = null;
 let tagsCacheAt = 0;
 
+const TAGS_CACHE_FILE = path.join(CONFIG.dataDir, `tags-${CONFIG.steam.l}.json`);
+const TAGS_TTL_MS = 7 * 86400000;   // 标签字典变化很慢，7 天足够
+const TAGS_STALE_OK_MS = 90 * 86400000; // 拿不到新数据时，90 天内的旧文件仍然可用
+
+/** 读磁盘上的标签字典缓存（返回 { list, at, stale } 或 null） */
+function readTagsFile() {
+  try {
+    if (!fs.existsSync(TAGS_CACHE_FILE)) return null;
+    const j = JSON.parse(fs.readFileSync(TAGS_CACHE_FILE, 'utf8'));
+    if (!Array.isArray(j?.list) || !j.list.length) return null;
+    const at = Number(j.at) || 0;
+    return { list: j.list, at, stale: Date.now() - at > TAGS_TTL_MS };
+  } catch { return null; }
+}
+
+function writeTagsFile(list) {
+  try {
+    fs.mkdirSync(CONFIG.dataDir, { recursive: true });
+    fs.writeFileSync(TAGS_CACHE_FILE, JSON.stringify({ at: Date.now(), lang: CONFIG.steam.l, list }), 'utf8');
+  } catch {}
+}
+
+/**
+ * Steam 标签字典（中文名 ↔ tagid）。
+ * 关键：这个接口会 429 限流。以前限流会导致「品类定位失败 → 回退全站热销榜」，
+ * 于是评估「模拟经营」却抓到《极限竞速》《PUBG》。现在磁盘缓存 + 过期兜底，限流也不再致命。
+ */
 export async function popularTags() {
   if (tagsCache && Date.now() - tagsCacheAt < 86400000) return tagsCache;
-  const j = await fetchJson(`https://store.steampowered.com/tagdata/populartags/${CONFIG.steam.l}`, FAST);
-  const list = Array.isArray(j)
-    ? j.filter((t) => t && t.tagid && t.name)
-    : Object.entries(j?.tagid ?? {}).map(([tagid, name]) => ({ tagid, name }));
-  tagsCache = list;
-  tagsCacheAt = Date.now();
-  return list;
+  const file = readTagsFile();
+  if (file && !file.stale) { tagsCache = file.list; tagsCacheAt = Date.now() - (Date.now() - file.at); return file.list; }
+  try {
+    const j = await fetchJson(`https://store.steampowered.com/tagdata/populartags/${CONFIG.steam.l}`, FAST);
+    const list = Array.isArray(j)
+      ? j.filter((t) => t && t.tagid && t.name)
+      : Object.entries(j?.tagid ?? {}).map(([tagid, name]) => ({ tagid, name }));
+    if (!list.length) throw new Error('标签字典为空');
+    tagsCache = list;
+    tagsCacheAt = Date.now();
+    writeTagsFile(list);
+    return list;
+  } catch (e) {
+    // 限流/断网：用旧文件（90 天内都算可用），完全没有就抛错（调用方还有静态兜底表）
+    if (file && Date.now() - file.at < TAGS_STALE_OK_MS) {
+      tagsCache = file.list;
+      tagsCacheAt = Date.now() - 86400000 + 60000; // 1 分钟后再试网络
+      return file.list;
+    }
+    throw e;
+  }
 }
 
 export async function findTagId(name) {
