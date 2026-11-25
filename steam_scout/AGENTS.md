@@ -28,6 +28,9 @@ src/retriever.mjs      中文倒排索引（CJK 二元组 + TF-IDF）检索知�
 src/llm.mjs            OpenAI 兼容客户端（流式 SSE 解析、工具调用增量拼装、推理模型兜底）
 src/agent.mjs          SYSTEM_PROMPT、detectMode、ReAct 循环、立项评估流水线、观点蒸馏、建议按钮生成
 src/evaluator.mjs      评分引擎（六维+状态/缺口）、开发周期基准、上线窗口、报告模板
+src/gantt.mjs          周级甘特图排期引擎（人日估算 + 角色产能 + 依赖调度 + Gate + 档期判定 + 打印版 HTML）
+src/genre-tags.mjs     中文品类 → Steam 标签 ID 静态词表（ID 均已与官方字典逐个核对）
+src/toolcall-repair.mjs 修复「模型把工具调用写成正文」（DSML 等）的解析与流式过滤
 src/evolution.mjs      市场快照/每日复盘/UP主同步/自动调研队列/调度器
 src/tools/*.mjs        steam / bilibili(wbi 签名+风控重试) / websearch(Bing) / knowledge / 项目档案工具
 src/ingest/seed.mjs    B 站 UP 主内容播种（--full / --distill）
@@ -37,7 +40,7 @@ scripts/               自检、编码审计、分享打包（pack_share.ps1 带
 
 ## 关键不变量（改代码前必读）
 
-1. **detectMode 优先级**：`档案读取类`（输出/回顾/查看/导出 + 项目/档案 + 结论/报告）→ `chat`；再判断立项关键词 → `eval`。**不要把档案读取误判成评估**。
+1. **detectMode 优先级**：档案读取类 → chat；甘特图/排期类（甘特/排期/周计划/档期/里程碑拆解）→ plan（确定性排期引擎，不走市场调研）；再判断立项关键词 → eval。**不要把排期请求误判成评估、也不要反过来**。旧序号顺延。
 2. **LLM 流式**：`deepseek-flash` 等推理模型会先输出 `reasoning_content`；流式正文为空时必须回退非流式重试（见 `llm.mjs` 末尾）。
 3. **工具注册**：新增工具 = 在 `src/tools/*.mjs` 定义 `{ name, description, parameters, handler }`，并在 `src/tools/index.mjs` 的 `TOOLS` 数组注册；`handler(args, ctx)` 的 `ctx` 含 `{ emit, session }`。
 4. **评估归档**：`evaluate_project` 与 eval 流水线都要写 `projects` + `evaluations`（`meta.session` 关联当前会话）+ `项目评估` 洞察。
@@ -66,4 +69,5 @@ node scripts/encoding_audit.mjs   # 编码
 # 端到端（需要服务在跑）：POST /api/chat 观察 SSE 事件序列
 #   期望 eval：phase×4 → status/tool → scores → report → delta → done
 #   期望 输出项目结论：无 phase，出现 project_list/project_report 工具，内容注明"读自档案"
+#   期望 plan（甘特图）：信息不全 → phase×1/2 + delta(追问)；信息够 → phase×2 + plan + report + done
 ```

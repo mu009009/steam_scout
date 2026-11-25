@@ -11,6 +11,8 @@ import { bingSearch } from './tools/websearch.mjs';
 import { dataProviderStatus, enrichCompetitors } from './tools/paid-data.mjs';
 import { matchGenreTag } from './genre-tags.mjs';
 import { extractPseudoToolCalls, stripToolMarkup } from './toolcall-repair.mjs';
+import { buildGantt, planGaps, buildPlanQuestions, planSuggestions } from './gantt.mjs';
+import { extractPlanBriefLLM } from './plan-intake.mjs';
 import { truncate, safeJsonParse, parseJsonLoose, sleep } from './util.mjs';
 import { cacheGet, cacheSet } from './research-cache.mjs';
 
@@ -37,6 +39,8 @@ function detectMode(text) {
   // 读取档案类请求（输出/回顾/查看项目…结论、报告）走普通对话 + project_report 工具，绝不能触发新评估
   const archiveLookup = /(输出|回顾|查看|读取|展示|给我|导出).{0,12}(项目|档案)/.test(t) && /(结论|报告|评估结果|评估记录)/.test(t);
   if (archiveLookup) return 'chat';
+  // 甘特图/排期类：走确定性排期引擎（不问市场，问的是"怎么排"）
+  if (/甘特|排期|周计划|周级|开发计划|里程碑拆解|时间表|档期|进度表|怎么排|几个阶段|每周.{0,4}(做|干)什么|排一下.{0,6}(计划|期)|做一?[个份张].{0,6}(计划|排期)/.test(t)) return 'plan';
   // 用户明确补充"品类/类型"（常见于澄清后的追问）→ 走评估
   if (/^(品类|类型|分类|赛道|genre|类型是|品类是)\s*[:：]?/i.test(t)) return 'eval';
   if (/评估|立项|值不值得|能不能做|值多少|做多久|多久.{0,6}(做|完成|开发|上线)|市场潜力|时机|可行性|可不可以做|还能.{0,6}(进场|入场|做)|红海|饱和|值不值得做/.test(t)) return 'eval';
@@ -627,6 +631,408 @@ function buildClarify(brief, titles, notFound) {
   };
 }
 
+/** 从自然语言里抽取排期所需信息（不用 LLM，规则+正则，快且稳定） */
+/** 从自然语言里抽取排期所需信息（不用 LLM，规则+正则，快且稳定） */
+/** 年份词 → 数字（今年/明年/后年/前年，也支持直接写年份） */
+function resolveYear(word) {
+  const now = new Date().getFullYear();
+  const w = String(word || '').trim();
+  if (/^\d{4}$/.test(w)) return Number(w);
+  if (w === '今年' || w === '本年' || w === '当年') return now;
+  if (w === '明年' || w === '下一年') return now + 1;
+  if (w === '后年') return now + 2;
+  if (w === '前年') return now - 2;
+  if (w === '去年') return now - 1;
+  return null;
+}
+
+/** 该月最后一天（YYYY-MM-DD） */
+function endOfMonth(y, m) {
+  const d = new Date(Date.UTC(y, m, 0));
+  return d.toISOString().slice(0, 10);
+}
+function iso(y, m, d) {
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/**
+ * 从一段文字里解析「时间窗口」，返回 { deadline, festOpen, noDeadline, phrase }
+ * 支持的写法（这是上一版反复追问的根因：只认 YYYY-MM-DD 一种）：
+ *   2027-06-14 / 2027/6/14 / 2027年6月14日 / 2027年6月
+ *   明年6月 / 今年12月 / 后年3月 / 6月底 / 3月中旬 / 下个月
+ *   2027年底 / 明年上半年 / 下半年 / Q3 / 第三季度
+ *   12个月后 / 半年内 / 20周后 / 一年内
+ *   2027年6月新品节（自动反推媒体预览线与 build 冻结线）
+ *   没有 / 暂无 / 不确定 / 没定 / 你说 / 最快路径
+ */
+function parseDeadlineInfo(text, startISO) {
+  const t = String(text || '');
+  const nowY = new Date().getFullYear();
+  const res = { deadline: null, festOpen: null, noDeadline: false, phrase: '' };
+
+  // ① 明确"没有硬性时间点"
+  if (/(没有|暂无|不用|不需要|不设|还没定|尚未确定|说不准|不确定|无)[^。\n]{0,8}(硬性)?(时间|截止|期限|档期|deadline|dead\s?line|日期|date)/i.test(t)
+    || /^(没有|暂无|无|没有硬性时间点|不确定|还没想好|没定|随便|你定|你说得算)[。！!，,\s]*$/.test(t.trim())
+    || /最快路径|尽快|按最快|尽快上线/.test(t)) {
+    res.noDeadline = true;
+    res.phrase = '未设硬截止';
+  }
+
+  const Y = '(20\\d{2}|今年|明年|后年|去年)';
+  // ② 新品节（优先于普通日期，因为要反推档期线）
+  const festM = t.match(new RegExp(`${Y}\\s*年?\\s*(\\d{1,2})\\s*月[^。\\n]{0,10}?(?:新品节|next\\s*fest|新品試玩|新品试玩)`, 'i'));
+  if (festM) {
+    const y = resolveYear(festM[1]);
+    const m = Number(festM[2]);
+    if (y && m >= 1 && m <= 12) {
+      res.festOpen = iso(y, m, 14); // 惯例月中开幕
+      res.phrase = `对标 ${y} 年 ${m} 月新品节`;
+    }
+  }
+
+  // ③ 明确日期 YYYY-MM-DD / YYYY年M月D日 / YYYY/M/D
+  const dM = t.match(/(20\d{2})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})/);
+  if (dM) {
+    const y = Number(dM[1]); const m = Number(dM[2]); const d = Number(dM[3]);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      res.deadline = iso(y, m, d);
+      res.phrase = res.phrase || `截止 ${res.deadline}`;
+    }
+  }
+
+  // ④ 只有年月：2027年6月 / 2027-06 / 2027/6 / 明年6月 / 今年12月 / 后年3月
+  if (!res.deadline && !res.festOpen) {
+    const ymM = t.match(new RegExp(`${Y}\\s*年?\\s*(\\d{1,2})\\s*月(?!\\s*\\d)`, 'i'))
+      || t.match(/(20\d{2})\s*[-/]\s*(\d{1,2})(?!\s*[-/\d])/); // 2027-06 / 2027/6（无"月"字）
+    if (ymM) {
+      const y = resolveYear(ymM[1]);
+      const m = Number(ymM[2]);
+      if (y && m >= 1 && m <= 12) {
+        res.deadline = endOfMonth(y, m);
+        res.phrase = `截止 ${y} 年 ${m} 月底（${res.deadline}）`;
+      }
+    }
+  }
+
+  // ⑤ 只有月份：6月底 / 3月中旬 / 下个月（今年若已过则该月顺延到明年）
+  if (!res.deadline && !res.festOpen) {
+    if (/下个月|下月/.test(t)) {
+      const d = new Date();
+      d.setMonth(d.getMonth() + 1);
+      res.deadline = endOfMonth(d.getFullYear(), d.getMonth() + 1);
+      res.phrase = `截止下月底（${res.deadline}）`;
+    } else {
+      const moM = t.match(/(\d{1,2})\s*月(底|末|中旬|初|份)?/);
+      if (moM) {
+        const m = Number(moM[1]);
+        if (m >= 1 && m <= 12) {
+          const thisMonth = new Date();
+          let y = nowY;
+          if (m < thisMonth.getMonth() + 1) y = nowY + 1; // 已过去的月份 → 明年
+          const day = moM[2] === '中旬' ? 15 : moM[2] === '初' ? 10 : null;
+          res.deadline = day ? iso(y, m, day) : endOfMonth(y, m);
+          res.phrase = `截止 ${y} 年 ${m} 月${moM[2] || '底'}（${res.deadline}）`;
+        }
+      }
+    }
+  }
+
+  // ⑥ 年底 / 上半年 / 下半年 / 季度
+  if (!res.deadline && !res.festOpen) {
+    const halfM = t.match(/(20\d{2}|今年|明年|后年)?\s*年?\s*(上半年|下半年|年底|年末|年中|年底前)/);
+    if (halfM) {
+      const y = resolveYear(halfM[1]) || nowY;
+      const seg = halfM[2];
+      const m = /上半年/.test(seg) ? 6 : /下半年|年底|年末/.test(seg) ? 12 : 7;
+      res.deadline = /年中/.test(seg) ? iso(y, 7, 1) : endOfMonth(y, m);
+      res.phrase = `截止 ${y} 年${seg}（${res.deadline}）`;
+    } else {
+      const qM = t.match(/(?:Q([1-4])|第([一二三四1-4])季度)/i);
+      if (qM) {
+        const map = { 一: 1, 二: 2, 三: 3, 四: 4 };
+        const q = qM[1] ? Number(qM[1]) : map[qM[2]] || Number(qM[2]);
+        let y = nowY;
+        let endMonth = q * 3;
+        // 该季度已过 → 顺延到明年
+        if (endMonth <= new Date().getMonth() + 1) { y = nowY + 1; }
+        res.deadline = endOfMonth(y, endMonth);
+        res.phrase = `截止 ${y} 年 Q${q} 末（${res.deadline}）`;
+      }
+    }
+  }
+
+  // ⑦ 相对时间：N 个月后 / N 周后 / 半年内 / 一年内
+  if (!res.deadline && !res.festOpen && !res.noDeadline) {
+    const base = startISO && !Number.isNaN(new Date(startISO).getTime()) ? new Date(startISO) : new Date();
+    const relM = t.match(/(\d+)\s*(?:个)?\s*月(?:内|后|之后)/) || t.match(/(\d+)\s*周(?:内|后|之后)/) || t.match(/(\d+)\s*年(?:内|后|之后)/);
+    if (relM) {
+      const n = Number(relM[1]);
+      const b = new Date(base);
+      if (/月/.test(relM[0])) b.setMonth(b.getMonth() + n);
+      else if (/周/.test(relM[0])) b.setDate(b.getDate() + n * 7);
+      else b.setFullYear(b.getFullYear() + n);
+      res.deadline = b.toISOString().slice(0, 10);
+      res.phrase = `截止约 ${res.deadline}（${relM[0]}）`;
+    } else if (/半年(?:内|后|之后)/.test(t)) {
+      const b = new Date(base); b.setMonth(b.getMonth() + 6);
+      res.deadline = b.toISOString().slice(0, 10);
+      res.phrase = `截止约 ${res.deadline}（半年后）`;
+    }
+  }
+
+  if (res.deadline || res.festOpen) res.noDeadline = false;
+  return res;
+}
+
+/** 从自然语言里抽取排期所需信息（不用 LLM，规则+正则，快且稳定） */
+function startDate0(text) {
+  const s = String(text || '').match(/(?:从|起点|开始|起点定在)[^。\n]{0,6}(20\d{2})[-/年](\d{1,2})/);
+  return s ? `${s[1]}-${String(Number(s[2])).padStart(2, '0')}-01` : null;
+}
+
+/**
+ * 解析排期 brief。第二个返回值 present 标记"哪些字段这次真的说了"，
+ * 用于多轮合并时做到「本次输入优先，缺的才沿用上一轮」。
+ */
+function parsePlanBrief(text, context = '') {
+  const t = String(text || '');
+  const all = `${t}\n${context}`;
+  const num = (m) => (m ? Number(m[1]) : null);
+  const present = { deadline: false, scope: false, targetState: false, teamSize: false, genre: false, name: false };
+
+  const nameM = t.match(/《([^》]{1,30})》/) || t.match(/["“]([^"”]{1,30})["”]/) || all.match(/项目[：:]\s*《?([^》，,\n]{2,30})/);
+  // 团队（排除"3 人月""3 人日"这类工时说法）
+  const cn = { 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  let teamSize = 3;
+  const teamM = t.match(/(\d+)\s*人(?!\s*[月日天])/) || t.match(/([两三四五六七八九十])\s*人(?!\s*[月日天])/);
+  if (teamM) {
+    teamSize = teamM[1] && /^\d+$/.test(teamM[1]) ? Number(teamM[1]) : (cn[teamM[1]] ?? 2);
+    present.teamSize = true;
+  }
+  // 里程碑
+  let milestone = 'Demo';
+  if (/上线|发售|正式版|1\.0/i.test(t) && !/demo|试玩/i.test(t)) milestone = '上线';
+  else if (/抢先体验|\bEA\b|early access/i.test(t)) milestone = 'EA';
+  else if (/垂直切片|vertical slice/i.test(t)) milestone = '垂直切片';
+  // 内容体量
+  const scope = {
+    chapters: num(t.match(/(\d+)\s*章/)) ?? 0,
+    cards: num(t.match(/(\d+)\s*张\s*卡/)) ?? 0,
+    bosses: num(t.match(/(\d+)\s*个?\s*(?:Boss|BOSS|boss|首领|boss战)/)) ?? 0,
+    levels: num(t.match(/(\d+)\s*个?\s*(?:关卡|场景|关)/)) ?? 0,
+    characters: num(t.match(/(\d+)\s*个?\s*(?:角色|立绘|人物)/)) ?? 0,
+    words: (num(t.match(/(\d+(?:\.\d+)?)\s*万字/)) ?? 0) * 10000 || (num(t.match(/(\d{4,})\s*字/)) ?? 0),
+  };
+  present.scope = ['chapters', 'cards', 'bosses', 'levels', 'characters', 'words'].some((k) => scope[k] > 0);
+  // 目标状态
+  let targetState = '';
+  const tsM = t.match(/(?:目标|想要?|计划|希望|要达成|达到|产出|交付)[^。\n]{4,80}/);
+  if (tsM) { targetState = tsM[0].replace(/^[：:\s]+/, '').slice(0, 120); present.targetState = true; }
+  else if (/demo|试玩/i.test(t)) { targetState = '做出可玩 Demo'; present.targetState = true; }
+  // 时间窗口
+  const dl = parseDeadlineInfo(t, startDate0(t));
+  present.deadline = Boolean(dl.deadline || dl.festOpen || dl.noDeadline);
+  // 已完成
+  const doneM = t.match(/(?:已完成|已经做完|做完了|已有)[：:]?\s*([^。\n]{2,80})/);
+  const done = doneM ? doneM[1].split(/[、,，/]/).map((s) => s.trim()).filter(Boolean).slice(0, 8) : [];
+  const partTime = /兼职|业余|周末|下班|非全职|外包/.test(t);
+  const genre = (t.match(/(?:品类|类型)[：:]\s*([^，,。\n]{2,20})/)?.[1])
+    || (t.match(/(肉鸽卡牌|构筑式?卡牌|卡牌|模拟经营|幸存者like|放置|塔防|平台跳跃|解谜|RPG|roguelike|视觉小说)/i)?.[1])
+    || '';
+
+  return {
+    brief: {
+      name: nameM ? nameM[1].trim() : '未命名项目',
+      genre,
+      description: t.slice(0, 300),
+      milestone,
+      teamSize: Math.max(1, Math.min(50, teamSize)),
+      scope,
+      targetState,
+      deadline: dl.deadline,
+      festOpen: dl.festOpen,
+      noDeadline: dl.noDeadline,
+      deadlinePhrase: dl.phrase,
+      done,
+      partTime,
+      startDate: startDate0(t),
+    },
+    present: { ...present, name: Boolean(nameM), genre: Boolean(genre) },
+  };
+}
+
+/** 多轮合并：本次输入优先，本次没说的才沿用上一轮 */
+function mergePlanBrief(prev, cur, present) {
+  const p = prev || {};
+  const c = cur || {};
+  const pick = (key, cond) => (cond ? c[key] : (p[key] ?? c[key]));
+  const scopeHas = present.scope
+    ? c.scope
+    : Object.assign({}, p.scope || {}, Object.fromEntries(Object.entries(c.scope || {}).filter(([, v]) => v > 0)));
+  return {
+    ...p,
+    ...c,
+    name: present.name ? c.name : (p.name && p.name !== '未命名项目' ? p.name : c.name),
+    genre: present.genre ? c.genre : (p.genre || c.genre),
+    teamSize: present.teamSize ? c.teamSize : (p.teamSize ?? c.teamSize),
+    targetState: present.targetState ? c.targetState : (p.targetState || c.targetState),
+    scope: scopeHas,
+    milestone: c.milestone || p.milestone || 'Demo',
+    deadline: pick('deadline', present.deadline),
+    festOpen: pick('festOpen', present.deadline),
+    noDeadline: present.deadline ? c.noDeadline : Boolean(p.noDeadline || c.noDeadline),
+    deadlinePhrase: present.deadline ? c.deadlinePhrase : (p.deadlinePhrase || c.deadlinePhrase),
+    done: [...new Set([...(p.done || []), ...(c.done || [])])].slice(0, 10),
+    partTime: present.teamSize ? c.partTime : Boolean(p.partTime || c.partTime),
+    startDate: c.startDate || p.startDate || null,
+  };
+}
+
+/** 甘特图规划模式：LLM 驱动的信息抽取与追问（规则解析作为兜底与日期换算） */
+async function runPlanMode(briefText, emit, session, context = '', pending = null) {
+  emit({ type: 'phase', index: 1, total: 2, text: '理解项目与阶段目标' });
+  emit({ type: 'status', text: '正在整理项目信息（团队/内容体量/时间窗口）…' });
+  const askedKeys = Array.isArray(pending?.askedKeys) ? pending.askedKeys : [];
+  const askedRounds = Number(pending?.rounds) || 0;
+  const useDefaults = /默认|你决定|随便|按你的来|不知道|不确定|没想过|最快路径|尽快|不想答/.test(briefText);
+
+  // ① 规则先跑一遍：它能可靠地做日期换算（"明年6月"→2027-06-30），把这当提示喂给模型
+  const cur = parsePlanBrief(briefText, context);
+  const ruleBrief = pending?.brief ? mergePlanBrief(pending.brief, cur.brief, cur.present) : cur.brief;
+
+  // ② LLM 抽取（主）：合并历史信息 + 判断够不够 + 自己提追问
+  let intake = null;
+  if (llmConfigured()) {
+    emit({ type: 'status', text: '正在理解你说的内容（模型抽取排期信息）…' });
+    intake = await extractPlanBriefLLM({
+      userText: briefText,
+      context,
+      prevBrief: pending?.brief || null,
+      askedKeys,
+      hints: {
+        rule_deadline: ruleBrief.deadline,
+        rule_fest_open: ruleBrief.festOpen,
+        rule_deadline_phrase: ruleBrief.deadlinePhrase,
+        rule_scope: ruleBrief.scope,
+        rule_no_deadline: ruleBrief.noDeadline,
+        today: new Date().toISOString().slice(0, 10),
+      },
+    });
+  }
+
+  // ③ 合成最终 brief：LLM 的文本字段 + 规则算好的日期（日期算术不交给模型）
+  let brief;
+  let questions = [];
+  if (intake) {
+    const b = intake.brief;
+    brief = {
+      ...ruleBrief,
+      name: b.name || ruleBrief.name,
+      genre: b.genre || ruleBrief.genre,
+      milestone: b.milestone || ruleBrief.milestone,
+      teamSize: b.teamSize || ruleBrief.teamSize,
+      targetState: b.targetState || ruleBrief.targetState,
+      scope: Object.values(b.scope || {}).some((v) => v > 0) ? b.scope : ruleBrief.scope,
+      done: [...new Set([...(ruleBrief.done || []), ...(b.done || [])])].slice(0, 10),
+      partTime: Boolean(b.partTime || ruleBrief.partTime),
+      // 时间：模型给不出具体日期时，用规则换算出的结果
+      deadline: b.deadline || ruleBrief.deadline || null,
+      festOpen: ruleBrief.festOpen || null,
+      noDeadline: b.noDeadline || ruleBrief.noDeadline,
+      deadlinePhrase: b.deadlineText || ruleBrief.deadlinePhrase || '',
+    };
+    questions = intake.ready ? [] : intake.questions;
+    emit({ type: 'status', text: `信息抽取完成（置信度 ${Math.round((intake.confidence || 0.5) * 100)}%）${questions.length ? `，模型认为还差 ${questions.length} 个信息` : '，信息足够'}` });
+  } else {
+    brief = ruleBrief;
+    const gaps = planGaps(brief);
+    questions = gaps.filter((g) => !askedKeys.includes(g.key)).map((g) => ({ key: g.key, q: g.q, options: [] }));
+    if (!llmConfigured()) emit({ type: 'status', text: '（未配置 LLM，使用规则解析；建议配置模型以获得更聪明的追问）' });
+  }
+
+  // ④ 兜底判断：即使模型说够了，必要项（内容体量 / 时间）还是空的话也要提醒
+  const ruleGaps = planGaps(brief).filter((g) => !askedKeys.includes(g.key));
+  if (!questions.length && ruleGaps.length && intake && !intake.ready) questions = ruleGaps.map((g) => ({ key: g.key, q: g.q, options: [] }));
+
+  // 追问最多一轮；用户说"用默认"或已问过就直接出表
+  const askAgain = questions.length > 0 && !useDefaults && askedRounds < 1;
+  if (askAgain) {
+    emit({ type: 'phase', index: 2, total: 2, text: '需要补充信息' });
+    const q = buildPlanQuestions(brief, questions);
+    emit({ type: 'delta', text: q });
+    const projectLabel = brief.name && brief.name !== '未命名项目' ? `《${brief.name}》` : '这个项目';
+    const sugg = [{ type: 'message', label: '🙂 用默认假设先排一版', text: `用默认假设先排${projectLabel}的甘特图` }];
+    // 模型给的候选答案直接变成可点按钮
+    for (const item of questions) {
+      for (const opt of (item.options || []).slice(0, 2)) {
+        sugg.push({ type: 'message', label: `↩︎ ${opt.length > 22 ? opt.slice(0, 22) + '…' : opt}`, text: opt });
+      }
+      if (item.key === 'deadline') sugg.push({ type: 'message', label: '⏱ 没有硬性时间点', text: '没有硬性时间点，按最快路径排' });
+    }
+    return {
+      text: q,
+      clarify: true,
+      plan: true,
+      planBrief: { brief, askedKeys: [...new Set([...askedKeys, ...questions.map((x) => x.key)])], rounds: askedRounds + 1 },
+      suggestions: sugg.slice(0, 5),
+    };
+  }
+
+  // 用默认假设补齐缺口（用户说"用默认"、或已经追问过 1 轮仍缺）
+  {
+    const scope = brief.scope || {};
+    const assumptions = [];
+    const hasScope = ['chapters', 'cards', 'bosses', 'levels', 'characters', 'words'].some((k) => Number(scope[k]) > 0);
+    if (!hasScope) {
+      brief.scope = { chapters: 1, cards: 60, bosses: 1, levels: 4, characters: 3, words: 30000 };
+      assumptions.push('内容体量：1 章 / 60 张卡 / 1 个 Boss / 4 个关卡 / 3 个角色');
+    }
+    if (!brief.targetState) {
+      brief.targetState = '可玩 Demo（能讲清核心循环 + 一段完整内容）';
+      assumptions.push('目标状态：可玩 Demo');
+    }
+    if (!brief.deadline && !brief.festOpen && !brief.noDeadline) {
+      brief.noDeadline = true;
+      assumptions.push('时间窗口：未设硬截止，按最快路径排');
+    }
+    brief.assumptions = assumptions;
+    if (assumptions.length) {
+      emit({
+        type: 'status',
+        text: `已按默认假设补齐（${assumptions.join('；')}），可在下一条消息里改，例如「改成 2 章 / 120 张卡，对标 2027 年 6 月新品节」。`,
+      });
+    }
+  }
+
+  emit({ type: 'phase', index: 2, total: 2, text: '生成周级甘特图与 Gate 标准' });
+  emit({ type: 'status', text: '正在按人日估算 + 角色产能 + 依赖关系排期…' });
+  const plan = buildGantt(brief);
+  emit({ type: 'plan', data: plan });
+  emit({ type: 'report', text: plan.markdown });
+  emit({ type: 'status', text: `排期完成：${plan.totalWeeks} 周 / ${plan.personMonths} 人月${plan.fit ? `（档期：${plan.fit === 'fits' ? '装得下' : plan.fit === 'tight' ? '偏紧' : '装不下'}）` : ''}` });
+
+  // 沉淀到知识库（便于后续追问/复盘）
+  try {
+    addInsight({
+      content: `《${plan.name}》${plan.milestone} 排期：${plan.totalWeeks} 周（约 ${plan.personMonths} 人月），起点 ${plan.startISO}，完成 ${plan.finishDate}${plan.deadlineISO ? `，硬截止 ${plan.deadlineISO}（${plan.fit === 'overflow' ? '装不下' : plan.fit === 'tight' ? '偏紧' : '装得下'}）` : ''}`,
+      category: '项目计划',
+      tags: `${brief.genre || '项目'},甘特图,排期`,
+      sourceType: 'plan',
+      sourceRef: plan.name,
+      weight: 0.8,
+    });
+    invalidate();
+  } catch {}
+
+  return {
+    text: plan.markdown,
+    projectName: plan.name,
+    genre: brief.genre,
+    plan,
+    suggestions: planSuggestions(plan.name),
+  };
+}
+
 async function runEvalMode(briefText, emit, session, context = '') {
   // 阶段横幅：让用户始终知道进度
   emit({ type: 'phase', index: 1, total: 4, text: '理解项目描述' });
@@ -762,13 +1168,18 @@ export async function runChat({ session = 'default', message, mode = null, emit 
   const lastMeta = safeJsonParse(lastAssistant?.meta ?? '{}', {});
 
   addConv(session, 'user', message);
-  const m = mode ?? (lastMeta.clarify ? 'eval' : detectMode(message));
+  const m = mode ?? (lastMeta.clarify
+    ? (lastMeta.plan ? 'plan' : 'eval')
+    : detectMode(message));
 
   let finalText;
   let evalMeta = null;
   try {
     if (m === 'eval') {
       evalMeta = await runEvalMode(message, emitTracked, session, context);
+      finalText = evalMeta.text;
+    } else if (m === 'plan') {
+      evalMeta = await runPlanMode(message, emitTracked, session, context, lastMeta.plan ? lastMeta.planBrief : null);
       finalText = evalMeta.text;
     } else {
       emit({ type: 'status', text: llmConfigured() ? '正在思考（可调用 Steam/B站/搜索/知识库工具）…' : 'LLM 未配置，只能走离线模式…' });
@@ -793,7 +1204,8 @@ export async function runChat({ session = 'default', message, mode = null, emit 
 
   // 结尾补发：前端只认流式正文，如果这一轮正文压根没流出去（推理模型只吐思考、
   // 或工具轮结束后没再产出正文），界面会显示"（无内容）"。这里把缺的部分补上。
-  if (m !== 'eval') {
+  // 注意：eval/plan 已通过 report 事件把正文推给前端（含 PDF 导出按钮），不再重复补发。
+  if (m !== 'eval' && m !== 'plan') {
     const streamed = streamedParts.join('');
     let rest = '';
     if (!streamed.trim()) rest = finalText;
@@ -804,16 +1216,20 @@ export async function runChat({ session = 'default', message, mode = null, emit 
 
   const suggestions = evalMeta?.clarify
     ? (evalMeta.suggestions ?? [])
-    : buildSuggestions(m, { projectName: evalMeta?.projectName, genre: evalMeta?.genre, userMessage: message });
+    : (evalMeta?.plan || m === 'plan'
+      ? (evalMeta?.suggestions ?? planSuggestions(evalMeta?.projectName))
+      : buildSuggestions(m, { projectName: evalMeta?.projectName, genre: evalMeta?.genre, userMessage: message }));
   const convId = addConv(session, 'assistant', finalText, {
     mode: m,
     kb: counts().insights,
     suggestions,
     clarify: Boolean(evalMeta?.clarify),
+    plan: m === 'plan' ? true : undefined,
+    planBrief: evalMeta?.planBrief ?? undefined,
   });
   emit({ type: 'done', convId, suggestions });
   // 异步沉淀本轮结论（不阻塞响应）
-  if (llmConfigured() && finalText.length > 300 && m !== 'eval') {
+  if (llmConfigured() && finalText.length > 300 && m === 'chat') {
     distillFromText(`用户问题: ${message}\n\n分析结论: ${finalText}`, { category: '调研结论', sourceType: 'conversation', sourceRef: String(convId), silent: true }).catch(() => {});
   }
   return finalText;

@@ -87,6 +87,7 @@ node scripts/build_standalone.mjs      # 重新生成单文件版 index.html
 | `kb_search` / `kb_list` / `kb_stats` / `kb_add_insight` | 本地知识库检索/列/统计/写入 | `query`、`category`、`content` |
 | `project_list` / `project_report` | 项目档案列表 / 读取某项目评估报告全文 | `name`（模糊匹配） |
 | `evaluate_project` | 评估引擎（六维评分+工期+窗口，写入档案） | `name`、`genre`、`description`、`competitors[]`、`releases_by_year`、`upcoming_count` 等 |
+| `make_gantt_plan` | **周级甘特图排期引擎**（确定性计算，不烧 token）：逐周任务表 + G1–G4 Gate 与通过标准 + 档期装不下时的三选一方案。信息不全（目标状态/内容体量/时间点）时**先向用户提问**，不要自行编造 | `name`、`genre`、`team_size`、`milestone`、`target_state`、`chapters`/`cards`/`bosses`/`levels`/`characters`/`words`、`deadline` 或 `fest_open`、`part_time`、`done[]` |
 | *(可选)* 第三方数据源 | 非工具，而是评估流水线内的适配层：配置 `DATA_PROVIDER` 后，官方接口缺失的字段（拥有者/销量近似/在线）由该源补齐，报告注明来源。内置预设只有 4 个：`steamapi`(免费) / `steamspy`(免费但常被 Cloudflare 拦) / `gamalytic`(付费，接口已核实存在) / `custom`(任意 JSON + 字段映射) | `.env` 的 `DATA_PROVIDER` / `_KEY` / `_URL` / `_MAP`；接口 `GET|POST /api/data-provider` |
 
 ## 数据与存储（全部本地）

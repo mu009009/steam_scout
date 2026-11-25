@@ -7,7 +7,7 @@ DELETE FROM conversations;
 DELETE FROM feedback;
 DELETE FROM projects;
 DELETE FROM evaluations;
-DELETE FROM insights WHERE category IN ('项目评估','调研结论');
+DELETE FROM insights WHERE category IN ('项目评估','调研结论','项目计划');
 PRAGMA wal_checkpoint(TRUNCATE);
 `);
 const n = db.prepare(`SELECT COUNT(*) AS n FROM insights`).get().n;

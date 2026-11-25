@@ -170,8 +170,25 @@
     }
   }
 
-  function addExportButton(meta, getContent) {
+  /** 甘特图专用导出：A4 横向、带色块的打印版，比通用 markdown 导出好看得多 */
+  function addPlanPdfButton(meta, plan) {
     const b = document.createElement('button');
+    b.className = 'mini-export';
+    b.textContent = '🖨 甘特图 PDF（横向）';
+    b.title = '打开 A4 横向打印版甘特图，打印窗口里选「另存为 PDF」';
+    b.onclick = () => {
+      const w = window.open('', '_blank');
+      if (!w) { alert('浏览器拦截了弹窗，请允许本站弹窗后重试'); return; }
+      w.document.open();
+      w.document.write(plan.html);
+      w.document.close();
+      setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 500);
+    };
+    meta.appendChild(b);
+    return b;
+  }
+
+  function addExportButton(meta, getContent) {    const b = document.createElement('button');
     b.className = 'mini-export';
     b.textContent = '⤓ 导出PDF';
     b.title = '将评估报告导出为 PDF';
@@ -422,6 +439,11 @@
               gotContent = true;
               renderBuf();
               break;
+            case 'plan':
+              // 甘特图数据：用于生成 A4 横向打印版（比通用 markdown 导出好看得多）
+              ai.planData = e.data || null;
+              gotContent = true;
+              break;
             case 'done':
               clearInterval(ticker);
               clearInterval(rotator);
@@ -431,6 +453,9 @@
               }
               if (ai.reportRaw) {
                 addExportButton(ai.meta, () => `${ai.reportRaw}\n\n${ai.textBuf}`);
+              }
+              if (ai.planData?.html) {
+                addPlanPdfButton(ai.meta, ai.planData);
               }
               renderSuggestions(ai.wrap, e.suggestions, () => (ai.reportRaw ? `${ai.reportRaw}\n\n${ai.textBuf}` : ai.textBuf));
               ai.convId = e.convId;

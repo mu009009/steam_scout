@@ -4,6 +4,7 @@ import { biliTools } from './bilibili.mjs';
 import { webTools } from './websearch.mjs';
 import { knowledgeTools } from './knowledge.mjs';
 import { runEvaluation } from '../evaluator.mjs';
+import { buildGantt } from '../gantt.mjs';
 import { upsertProject, addEvaluation, addInsight, listProjects, listEvaluations } from '../db.mjs';
 import { invalidate } from '../retriever.mjs';
 import { truncate } from '../util.mjs';
@@ -76,6 +77,53 @@ const evaluateTool = {
 };
 
 const projectTools = [
+  {
+    name: 'make_gantt_plan',
+    description: '生成「Demo/里程碑 周级甘特图」：按项目信息与内容体量，用确定性排期引擎算出周级任务表、关键 Gate 与通过标准、档期是否装得下的三选一方案。调用前先确认：①下一阶段目标状态 ②内容体量（章节/卡牌/Boss/关卡/角色数）③硬时间点（发售日或 Steam 新品节）。信息不全时先向用户提问，不要自己编。',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '项目名' },
+        genre: { type: 'string', description: '品类（中文）' },
+        description: { type: 'string', description: '项目简介/玩法要点' },
+        milestone: { type: 'string', description: '目标里程碑：Demo / 垂直切片 / EA / 上线' },
+        team_size: { type: 'integer', description: '开发人数' },
+        target_state: { type: 'string', description: '下一阶段要达成的状态（例如「2 章可玩、单周目 2 小时」）' },
+        chapters: { type: 'integer', description: '章节数' },
+        cards: { type: 'integer', description: '卡牌数' },
+        bosses: { type: 'integer', description: 'Boss 数' },
+        levels: { type: 'integer', description: '关卡/场景数' },
+        characters: { type: 'integer', description: '角色数' },
+        words: { type: 'integer', description: '剧情字数' },
+        deadline: { type: 'string', description: '硬截止日期 YYYY-MM-DD' },
+        fest_open: { type: 'string', description: '目标 Steam 新品节开幕日期 YYYY-MM-DD（会自动反推媒体预览线与 build 冻结线）' },
+        part_time: { type: 'boolean', description: '是否兼职投入' },
+        done: { type: 'array', description: '已完成事项', items: { type: 'string' } },
+      },
+      required: ['name', 'genre', 'team_size'],
+    },
+    handler: async (a) => {
+      const plan = buildGantt({
+        name: a.name,
+        genre: a.genre,
+        description: a.description ?? '',
+        milestone: a.milestone ?? 'Demo',
+        teamSize: Number(a.team_size) || 3,
+        targetState: a.target_state ?? '',
+        scope: { chapters: a.chapters, cards: a.cards, bosses: a.bosses, levels: a.levels, characters: a.characters, words: a.words },
+        deadline: a.deadline ?? null,
+        festOpen: a.fest_open ?? null,
+        partTime: Boolean(a.part_time),
+        done: a.done ?? [],
+      });
+      return {
+        summary: `${plan.totalWeeks} 周 / ${plan.personMonths} 人月，完成 ${plan.finishDate}${plan.fit ? `，档期判定：${plan.fit}` : ''}`,
+        markdown: plan.markdown,
+        weeks: plan.totalWeeks,
+        fit: plan.fit,
+      };
+    },
+  },
   {
     name: 'project_list',
     description: '列出本地项目档案（项目名 / 品类 / 建档时间），用于了解用户评估过哪些项目。',
